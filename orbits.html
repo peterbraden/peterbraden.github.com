@@ -12,10 +12,26 @@ var orbits = {};
 orbits.ui = {};
 orbits.draw={};
 
+
+orbits.getCoord = function(pos){
+	return [pos[0] * orbits.screen.width, pos[1] * orbits.screen.height];
+}
+orbits.fromCoord = function(pos){
+	return [pos[0] / orbits.screen.width, pos[1]/ orbits.screen.height] 
+}
+orbits.screenscale = function(x){
+	return x*orbits.screen.width;
+	}
+orbits.unscale = function(x){
+	return x/orbits.screen.width;
+}	
+	
+
 orbits.draw.fillcircle = function(ctx, pos, rad, color){
 	ctx.fillStyle = color;
 	ctx.beginPath(); 
-	ctx.arc(pos[0],pos[1],rad,0,Math.PI*2,true);
+	pos = orbits.getCoord(pos);
+	ctx.arc(pos[0],pos[1],orbits.screenscale(rad),0,Math.PI*2,true);
 	ctx.fill(); 
 }
 
@@ -32,7 +48,8 @@ orbits.draw.arc = function(ctx, pos, angle, norm, color, thickness, radius){
 	ctx.beginPath();
 	ctx.strokeStyle = color;
 	ctx.lineWidth = thickness; 
-	ctx.arc(pos[0],pos[1], radius, a - angle/2,a + angle/2,false);
+	pos = orbits.getCoord(pos);
+	ctx.arc(pos[0],pos[1], orbits.screenscale(radius), a - angle/2,a + angle/2,false);
 	ctx.stroke(); 
 }
 
@@ -82,12 +99,12 @@ orbits.vectorDot = function(r1, r2){
 	return r1[0] * r2[0] + r1[1] * r2[1]
 }
 
-orbits.planet = function(x, y, radius, color){
+orbits.planet = function(pos, radius, color){
 	return {
-		x: x,
-		y: y,
+		x: pos[0],
+		y: pos[1],
 		heading: [0,0],
-		gravity: radius*radius*10,
+		gravity: radius * radius,
 		color: color,
 		draw: function(ctx){
 				orbits.draw.fillcircle(ctx, [this.x, this.y], radius, color);
@@ -109,8 +126,8 @@ orbits.planet = function(x, y, radius, color){
 	}
 }		
 
-orbits.moon = function(x, y, heading, radius, color){
-	var o = orbits.planet(x, y, radius, color);
+orbits.moon = function(pos, heading, radius, color){
+	var o = orbits.planet(pos, radius, color);
 	o.heading = heading;
 	o.gravity = 0;
 	o.check_intersects = function(){},
@@ -134,8 +151,8 @@ orbits.moon = function(x, y, heading, radius, color){
 	return o;
 }
 
-orbits.spaceship = function(x, y, heading, radius, color){
-	var s = orbits.moon(x, y, heading, radius, color);
+orbits.spaceship = function(pos, heading, radius, color){
+	var s = orbits.moon(pos, heading, radius, color);
 	var old_move = s.move;
 	s.time_alive =0;
 	s.check_intersects = function(){
@@ -164,8 +181,8 @@ orbits.spaceship = function(x, y, heading, radius, color){
 	
 }
 
-orbits.target = function(x, y){
-	var t = orbits.planet(x, y, 6, '#44f');
+orbits.target = function(pos){
+	var t = orbits.planet(pos, 0.01, '#44f');
 	t.target = true;
 	return t;
 }
@@ -187,27 +204,27 @@ orbits.ui.slingshot = function(st){
 				//s.start = [e.clientX, e.clientY];
 				
 			}).mousemove(function(e){
-				s.finish = [e.clientX, e.clientY];
+				s.finish = orbits.fromCoord([e.clientX, e.clientY]);
 			}).mouseup(function(e){
 				visible = false;
-				var h = orbits.vectorSubtract(s.start, [e.clientX, e.clientY]);
-				spaceship = orbits.spaceship(s.start[0], s.start[1], orbits.vectorScale(h, orbits.vectorLength(h)), 5, '#f0f');
+				var h = orbits.vectorSubtract(s.start, orbits.fromCoord([e.clientX, e.clientY]));
+				spaceship = orbits.spaceship(s.start, orbits.vectorScale(h, 100 * orbits.vectorLength(h)), 0.01, '#f0f');
 				orbits.objects.push(spaceship);
 			});	
 		},
 		
 		draw: function(ctx){
 			//if ((!spaceship) || orbits.objects.indexOf(spaceship) < 0){
-				orbits.draw.fillcircle(ctx, this.start, 2, '#ff5');
+				orbits.draw.fillcircle(ctx, this.start, 0.005, '#ff5');
 			//}
 			if (visible && !orbits.vectorEqual(this.start, this.finish)){
 				var l = orbits.vectorLength(orbits.vectorSubtract(this.finish, this.start));
-				for (var i = 1; i<= l; i++){
-					if (i%10==0){
-						orbits.draw.arc(ctx, this.start, 0.5, this.finish, 'rgb(255,' + parseInt((1-i/l) * 255) + ', 0)', 3, i);
+				for (var i = 1; i<= l*100; i++){
+					if (i%3==0){
+						orbits.draw.arc(ctx, this.start, 0.5, this.finish, 'rgb(255,' + parseInt((1-i/(l*100)) * 255) + ', 0)', 3, i/100);
 					}
 				};	
-				orbits.draw.fillcircle(ctx, this.start, 2, '#ff5');
+				orbits.draw.fillcircle(ctx, this.start, 0.005, '#ff5');
 
 			}	
 		}
@@ -220,21 +237,23 @@ orbits.ui.slingshot = function(st){
 $(function(){		
 	var screen = $("#orbits")[0];
 	var ctx = screen.getContext('2d');
-
+	
+	orbits.screen = screen
+	
 	orbits.objects = [
-		orbits.planet(100.0,250.0,30.0,'#999'),
-		orbits.planet(300.0,250.0,30.0,'#999'),
-		orbits.target(200, 100),
+		orbits.planet([0.2,0.5], 0.1,'#999'),
+		orbits.planet([0.6, 0.5], 0.1,'#999'),
+		orbits.target([0.4, 0.8])
 		//orbits.moon(50.0, 50.0, [15000,-40], 10.0, '#f00'),
 	];
 
 	var time = 0;	
 	setInterval(
 		function(){
-			orbits.gameLoop(screen, ctx, 1000);
+			orbits.gameLoop(screen, ctx, 500);
 		}, 10);
 	
-	var ss = orbits.ui.slingshot([400, 400])
+	var ss = orbits.ui.slingshot([0.2, 0.1])
 	ss.bind($(screen));
 });	
 
