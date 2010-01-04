@@ -58,14 +58,15 @@ orbits.ui.objs = [];
 orbits.gameLoop = function(screen, ctx, tdiff){
 	
 	//Background
-	ctx.fillStyle = "rgba(30,30,30,0.2)";
+	ctx.fillStyle = "rgba(40,40,40,0.2)";
 	ctx.fillRect (0, 0, screen.width, screen.height);
 	
 	//Objects
 	$.each(orbits.objects, function(){
-		this.move(tdiff);
-		this.draw(ctx);	
-		if (tdiff%1000 ==0){
+		if (this.move(tdiff)){
+			this.draw(ctx);	
+		}	
+		if (tdiff%10 ==0){
 			this.slow_update();
 		}
 	});	
@@ -113,14 +114,14 @@ orbits.planet = function(pos, radius, color){
 				//var i = this.heading
 				//ctx.fillRect(this.x + i[0], this.y + i[1], 5,5); 
 			},
-		move: function(tdiff){},
+		move: function(tdiff){return true;},
 		grav_v: function(pos){
 			var x = orbits.vectorSubtract([this.x, this.y], pos);
 			var xl = orbits.vectorLength(x);
 			return orbits.vectorScale(x, (1.0/(xl*xl)) * this.gravity);
 		},
 		intersects: function(pos, rad){
-			return (orbits.vectorLength(orbits.vectorSubtract([this.x, this.y], pos))< radius+rad)
+			return (orbits.vectorLength(orbits.vectorSubtract([this.x, this.y], pos)) < radius+rad)
 		},
 		slow_update: function(){},
 	}
@@ -130,10 +131,10 @@ orbits.moon = function(pos, heading, radius, color){
 	var o = orbits.planet(pos, radius, color);
 	o.heading = heading;
 	o.gravity = 0;
-	o.check_intersects = function(){},
+	o.check_intersects = function(){return true},
 	o.move = function(tdiff){
 		var grav_v = [0,0];
-		this.check_intersects();
+		var m = this.check_intersects();
 		$.each(orbits.objects, function(){
 			if (this != o){
 				grav_v = orbits.vectorAdd(grav_v, this.grav_v([o.x, o.y]));	
@@ -144,7 +145,7 @@ orbits.moon = function(pos, heading, radius, color){
 		o.heading = heading;
 		o.x += curr_vec[0]/tdiff;
 		o.y += curr_vec[1]/tdiff;
-		
+		return m;
 	};
 	
 	
@@ -163,15 +164,19 @@ orbits.spaceship = function(pos, heading, radius, color){
 					//Success
 					$('#score').text('Success:' + s.time_alive);	
 				}else{
+					orbits.ui.objs.push(orbits.ui.explosion([s.x, s.y]));
 					$('#score').text(0);
 				}
+				return false;
 			}
 		});
+		return true;
 	},
 	
 	s.move = function(tdiff){
 		s.time_alive += tdiff;
-		old_move.call(s, tdiff);
+		return old_move.call(s, tdiff);
+		
 	}
 	
 	s.slow_update = function(){
@@ -187,6 +192,20 @@ orbits.target = function(pos){
 	return t;
 }
 
+orbits.ui.explosion = function(pos){
+	return {
+		pos: pos,
+		i : 0.02,
+		draw : function(ctx){
+			if (this.i > 0.05){
+				orbits.ui.objs.slice(orbits.ui.objs.indexOf(this), 1);
+			}else{
+				orbits.draw.fillcircle(ctx, pos, this.i, 'rgba(255,'+parseInt(this.i*20*255) + ',0,' + 1/(100*this.i)+")");	
+			}	
+			this.i += this.i/5;
+		}
+	}	
+}
 
 orbits.ui.slingshot = function(st){
 	var spaceship, visible;
@@ -262,7 +281,7 @@ $(function(){
 
 	</head>
 	<body>
-		<canvas width = '500' height='500' id = 'orbits' ></canvas>
+		<canvas width = '500' height='300' id = 'orbits' ></canvas>
 		<p id='score'>0</p>
 	</body>
 </html>	
