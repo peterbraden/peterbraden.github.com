@@ -1,7 +1,7 @@
 <html>
 	<head>
 		<script src = 'http://ajax.googleapis.com/ajax/libs/jquery/1.3.2/jquery.min.js'></script>
-
+		<script src = './plib.js'></script>
 		<style type = "text/css">
 		</style>
 		
@@ -11,7 +11,7 @@
 var orbits = {};
 orbits.ui = {};
 orbits.draw={};
-
+var vec = plib.v2
 
 orbits.getCoord = function(pos){
 	return [pos[0] * orbits.screen.width, pos[1] * orbits.screen.height];
@@ -37,11 +37,11 @@ orbits.draw.fillcircle = function(ctx, pos, rad, color){
 
 orbits.draw.arc = function(ctx, pos, angle, norm, color, thickness, radius){
 	
-	radius = radius || orbits.vectorLength(orbits.vectorSubtract(norm, pos));
+	radius = radius || vec.len(vec.sub(norm, pos));
 	
-	var a = Math.acos(orbits.vectorDot(
-		orbits.vectorNormalise(orbits.vectorSubtract([pos[0]+10, pos[1]], pos)),
-		orbits.vectorNormalise(orbits.vectorSubtract(norm, pos))
+	var a = Math.acos(vec.dot(
+		vec.normalise(vec.sub([pos[0]+10, pos[1]], pos)),
+		vec.normalise(vec.sub(norm, pos))
 	));
 	a = norm[1] < pos[1] ? -a : a;
 		
@@ -76,29 +76,6 @@ orbits.gameLoop = function(screen, ctx, tdiff){
 		this.draw(ctx);
 	});
 }
-		
-orbits.vectorEqual = function(v1, v2){
-	return (v1[0]== v2[0] && v1[1] == v2[1]);
-}
-orbits.vectorLength = function(vec){
-	return Math.sqrt(vec[0]*vec[0]+ vec[1]*vec[1]);
-}
-orbits.vectorScale = function(p1, scale){
-	return [p1[0] * scale, p1[1] * scale];
-}
-orbits.vectorNormalise = function(r){
-	var len = orbits.vectorLength(r);
-	return [r[0]/len, r[1]/len]
-}
-orbits.vectorAdd = function(p1, p2){
-	return [p1[0] + p2[0], p1[1]+ p2[1]];
-}
-orbits.vectorSubtract = function(p1, p2){
-	return [p1[0] - p2[0], p1[1] - p2[1]];
-}
-orbits.vectorDot = function(r1, r2){
-	return r1[0] * r2[0] + r1[1] * r2[1]
-}
 
 orbits.planet = function(pos, radius, color){
 	return {
@@ -116,12 +93,12 @@ orbits.planet = function(pos, radius, color){
 			},
 		move: function(tdiff){return true;},
 		grav_v: function(pos){
-			var x = orbits.vectorSubtract([this.x, this.y], pos);
-			var xl = orbits.vectorLength(x);
-			return orbits.vectorScale(x, (1.0/(xl*xl)) * this.gravity);
+			var x = vec.sub([this.x, this.y], pos);
+			var xl = vec.len(x);
+			return vec.scale(x, (1.0/(xl*xl)) * this.gravity);
 		},
 		intersects: function(pos, rad){
-			return (orbits.vectorLength(orbits.vectorSubtract([this.x, this.y], pos)) < radius+rad)
+			return (vec.len(vec.sub([this.x, this.y], pos)) < radius+rad)
 		},
 		slow_update: function(){},
 	}
@@ -137,11 +114,11 @@ orbits.moon = function(pos, heading, radius, color){
 		var m = this.check_intersects();
 		$.each(orbits.objects, function(){
 			if (this != o){
-				grav_v = orbits.vectorAdd(grav_v, this.grav_v([o.x, o.y]));	
+				grav_v = vec.add(grav_v, this.grav_v([o.x, o.y]));	
 			}
 		});
-		var heading = orbits.vectorAdd(grav_v, o.heading); 
-		var curr_vec = orbits.vectorScale(heading, 1);
+		var heading = vec.add(grav_v, o.heading); 
+		var curr_vec = vec.scale(heading, 1);
 		o.heading = heading;
 		o.x += curr_vec[0]/tdiff;
 		o.y += curr_vec[1]/tdiff;
@@ -226,8 +203,8 @@ orbits.ui.slingshot = function(st){
 				s.finish = orbits.fromCoord([e.clientX, e.clientY]);
 			}).mouseup(function(e){
 				visible = false;
-				var h = orbits.vectorSubtract(s.start, orbits.fromCoord([e.clientX, e.clientY]));
-				spaceship = orbits.spaceship(s.start, orbits.vectorScale(h, 100 * orbits.vectorLength(h)), 0.01, '#f0f');
+				var h = vec.sub(s.start, orbits.fromCoord([e.clientX, e.clientY]));
+				spaceship = orbits.spaceship(s.start, vec.scale(h, 100 * vec.len(h)), 0.01, '#f0f');
 				orbits.objects.push(spaceship);
 			});	
 		},
@@ -236,8 +213,8 @@ orbits.ui.slingshot = function(st){
 			//if ((!spaceship) || orbits.objects.indexOf(spaceship) < 0){
 				orbits.draw.fillcircle(ctx, this.start, 0.005, '#ff5');
 			//}
-			if (visible && !orbits.vectorEqual(this.start, this.finish)){
-				var l = orbits.vectorLength(orbits.vectorSubtract(this.finish, this.start));
+			if (visible && !vec.eq(this.start, this.finish)){
+				var l = vec.len(vec.sub(this.finish, this.start));
 				for (var i = 1; i<= l*100; i++){
 					if (i%3==0){
 						orbits.draw.arc(ctx, this.start, 0.5, this.finish, 'rgb(255,' + parseInt((1-i/(l*100)) * 255) + ', 0)', 3, i/100);
