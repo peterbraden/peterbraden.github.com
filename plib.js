@@ -67,3 +67,26 @@ plib.v3.sub = function(p1, p2){
 }
 
 
+
+/*****************************************************************************
+ *  Iteration Tools
+ ****************************************************************************/
+// range(end)
+// range(start, end)
+// range(start, end, step)
+plib.range = function(a, b, c){
+	return plib.forRange(function(i){return i}, a, b, c);
+}
+
+// For each value in range
+plib.forRange = function(func, a, b, c){
+	var start = b?a:0;
+	var end = b?b:a;
+	var step = c?c:1;
+
+	var out = new Array((end - start) / step);
+	for (var i=start; i<end; i+=step){
+		out[i] = func(i);
+	}
+	return out
+}	
