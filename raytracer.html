@@ -2,6 +2,10 @@
 	<head>
 		<script src = 'http://ajax.googleapis.com/ajax/libs/jquery/1.3.2/jquery.min.js'></script>
 		<script src = './plib.js'></script>
+		<style type = 'text/css'>
+body{background-color:#eee;font-family:'Gill sans', helvetica, arial, sans; text-align:center;}
+p{width:40em; margin: 0 auto;}
+		</style>
 	</head>
 	<body>
 <h1>Tracing Rays</h1>	
@@ -11,8 +15,9 @@
 This only works in a modern browser that supports the &lt;canvas&gt; element. For example Firefox 3.5+, Safari or Chrome.
 </canvas>
 
-
+<br />
 <button id = "start_raytracer">Start</button>
+<br />
 
 <p><em>The raytracer is pretty processor intensive - I recommend you run it in Google Chrome which has the fastest javascript engine I've found. Also tested in Firefox/Safari. Will certainly not work in IE.</em></p>
 
@@ -366,38 +371,13 @@ rays.renderImage = function(screen, ctx){
 
 
 
-
-var badoomph = badoomph || {};
-
-badoomph.doMap = function(resp, callback){
-	if (window.Worker && badoomph.workerscript){		
-		if (!badoomph.worker){	
-			badoomph.worker = new Worker(badoomph.workerscript)
-			badoomph.worker.onmessage = function(event){
-				//console.log(event.data);
-				e = JSON.parse(event.data)
-				if (e.status == 'success'){
-					callback(e.args, e.res);
-				}
-				
-			}
-			badoomph.worker.onerror = function(event){throw event.data;}
-		}
-		badoomph.worker.postMessage(JSON.stringify({'status' : 'map' , 'data' : resp['args']}));
-	}else{
-		rays.map(resp['args'], callback);
-	}
-}
-
-
-
-badoomph.localProcess = function(data){
+localProcess = function(data){
 	var run = function(ind){
 		if (ind >= data.length){
 			return
 		}
 		console.log("Rendering Line", ind);
-		badoomph.doMap({'args' : data[ind]}, function(args, res){
+		rays.map(data[ind], function(args, res){
 			rays.handleResult([{'args' : args, 'res' : res}], function(){
 				run(++ind);
 			});
@@ -482,7 +462,7 @@ $(function(){
 		0, screen.height
 	);
 	$("#start_raytracer").click(function(){
-		badoomph.localProcess(data);
+		localProcess(data);
 	});
 	
 });
