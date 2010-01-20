@@ -1,18 +1,13 @@
 <html>
 	<head>
 		<script src = 'http://ajax.googleapis.com/ajax/libs/jquery/1.3.2/jquery.min.js'></script>
+		<script src = './plib.js'></script>
 	</head>
 	<body>
 <h1>Tracing Rays</h1>	
-	
 
-<p>I like coding. In fact I like it so much that every now and then I make something completely pointless and yet quite cool. That way it feels more like art and less like business.</p>
 
-<p>So without further ado:</p>
-
-<h2>Javascript Raytracer</h2>
-
-<canvas id = "rays" width = "150" height = "150">
+<canvas id = "rays" width = "400" height = "200">
 This only works in a modern browser that supports the &lt;canvas&gt; element. For example Firefox 3.5+, Safari or Chrome.
 </canvas>
 
@@ -28,32 +23,6 @@ This only works in a modern browser that supports the &lt;canvas&gt; element. Fo
 
 var rays = {};
 
-/** Maths **/
-rays.vectorAdd = function(p1, p2){
-	return [p1[0] + p2[0], p1[1]+ p2[1], p1[2] + p2[2]];
-}
-rays.vectorSubtract = function(p1, p2){
-	return [p1[0] - p2[0], p1[1] - p2[1], p1[2] - p2[2]];
-}
-rays.vectorMultiply = function(p1, p2){
-	return [p1[0] * p2[0], p1[1] * p2[1], p1[2] * p2[2]];
-}
-
-rays.vectorScale = function(p1, scale){
-	return [p1[0] * scale, p1[1] * scale, p1[2] * scale];
-}
-rays.vectorDot = function(r1, r2){
-	return r1[0] * r2[0] + r1[1] * r2[1] + r1[2] * r2[2] 
-}
-rays.vectorLength = function(ray){
-	return Math.sqrt(ray[0]*ray[0]+ ray[1]*ray[1] + ray[2]*ray[2]);
-}
-
-rays.vectorNormalise = function(r){
-	var len = rays.vectorLength(r);
-	return [r[0]/len, r[1]/len, r[2]/len]
-}
-
 
 /** Primitives **/
 rays.Sphere = function(pos, radius, color, phong, reflection){
@@ -64,10 +33,10 @@ rays.Sphere = function(pos, radius, color, phong, reflection){
 		this.reflection = reflection || 0;
 	
 		this.intersects = function(ro, rd){
-			var rdn = rays.vectorNormalise(rd);
-			var dst = rays.vectorSubtract(ro, this.pos);
-			var b = rays.vectorDot(dst, rdn);
-			var c = rays.vectorDot(dst, dst)- this.radius*this.radius;
+			var rdn = plib.v3.normalise(rd);
+			var dst =plib.v3.sub(ro, this.pos);
+			var b = plib.v3.dot(dst, rdn);
+			var c = plib.v3.dot(dst, dst)- this.radius*this.radius;
 			var d = b*b-c;
 			if (d){
 				return -b - Math.sqrt(d)}
@@ -76,7 +45,7 @@ rays.Sphere = function(pos, radius, color, phong, reflection){
 		}
 		
 		this.normal = function(pt){
-			return rays.vectorNormalise(rays.vectorSubtract(pt, this.pos));
+			return plib.v3.normalise(plib.v3.sub(pt, this.pos));
 		}
 	
 	};
@@ -89,8 +58,8 @@ rays.CheckerYPlane = function(y, col1, col2){
 	this.reflection = 0.1;
 	
 	this.intersects = function(ro, rd){
-		var rdn = rays.vectorNormalise(rd);
-		return rays.vectorDot([0,1,0], rays.vectorSubtract([0,this.y,0], ro))/ rays.vectorDot([0,1,0], rdn);
+		var rdn = plib.v3.normalise(rd);
+		return plib.v3.dot([0,1,0], plib.v3.sub([0,this.y,0], ro))/ plib.v3.dot([0,1,0], rdn);
 	}
 	this.normal = function(pt){
 		return [0,1,0];
@@ -157,7 +126,7 @@ rays.trace = function(ro, rd, depth){
 	var dist = i[0];	
 	
 	if (nearest){
-		var intersection_point = rays.vectorAdd(ro, rays.vectorScale(rays.vectorNormalise(rd), dist));
+		var intersection_point = plib.v3.add(ro, plib.v3.scale(plib.v3.normalise(rd), dist));
 		var normal = nearest.normal(intersection_point);
 		
 		//Ambient
@@ -165,12 +134,12 @@ rays.trace = function(ro, rd, depth){
 		var specs = [0,0,0];
 			
 		$.each(rays.scene.lights, function(){
-			var lvec = rays.vectorSubtract(this[0], intersection_point)
+			var lvec = plib.v3.sub(this[0], intersection_point)
 
-			var shadow = rays.intersection(intersection_point, lvec, rays.vectorLength(lvec), 0.05);
+			var shadow = rays.intersection(intersection_point, lvec, plib.v3.len(lvec), 0.05);
 			if (!shadow[1]) {	
 				//Diffuse (Lambertian)
-				var diff_scale = rays.vectorDot(rays.vectorNormalise(lvec), normal) * this[1]
+				var diff_scale = plib.v3.dot(plib.v3.normalise(lvec), normal) * this[1]
 				if (diff_scale > 0){		
 					col_scale += diff_scale;
 					}
@@ -178,24 +147,24 @@ rays.trace = function(ro, rd, depth){
 				/* Someone hire me and get me to do something productive :) */
 				
 				//Specular
-				var i = rays.vectorNormalise(lvec);
-				var r = rays.vectorSubtract(i, rays.vectorScale(normal, 2.0*rays.vectorDot(normal, i)));
-				var dp = rays.vectorDot(r, rays.vectorNormalise(rd))
+				var i = plib.v3.normalise(lvec);
+				var r = plib.v3.sub(i, plib.v3.scale(normal, 2.0*plib.v3.dot(normal, i)));
+				var dp = plib.v3.dot(r, plib.v3.normalise(rd))
 				if (dp >0){
 					var spec_scale = Math.pow(dp, nearest.phong)
 					if (spec_scale > 0){		
-						specs = rays.vectorAdd(specs, rays.vectorScale(this[2], spec_scale*this[1]))
+						specs = plib.v3.add(specs, plib.v3.scale(this[2], spec_scale*this[1]))
 					}
 				}
 			}
 		});
-		var col = rays.vectorAdd(rays.vectorScale(nearest.color(intersection_point), col_scale), specs);	
+		var col = plib.v3.add(plib.v3.scale(nearest.color(intersection_point), col_scale), specs);	
 		//Reflection
 		if (nearest.reflection && depth<rays.max_depth){
-			var r = rays.vectorSubtract(rd, rays.vectorScale(normal, 2.0*rays.vectorDot(normal, rd)));
+			var r = plib.v3.sub(rd, plib.v3.scale(normal, 2.0*plib.v3.dot(normal, rd)));
 			var refl = rays.trace(intersection_point, r ,depth+1)
-			col = rays.vectorAdd(rays.vectorScale(col, 1 - nearest.reflection),
-				 rays.vectorScale(refl, nearest.reflection))
+			col = plib.v3.add(plib.v3.scale(col, 1 - nearest.reflection),
+				 plib.v3.scale(refl, nearest.reflection))
 		}
 		
 		return col
@@ -229,7 +198,7 @@ rays.renderImage = function(screen, ctx){
 			//}
 				
 			//Trace Ray	
-			var ray = rays.vectorSubtract([x - screen.width/2, y - screen.height/2, rays.cam_dist], rays.eye);
+			var ray = plib.v3.sub([x - screen.width/2, y - screen.height/2, rays.cam_dist], rays.eye);
 			var col = rays.trace(rays.eye, ray);
 			ctx.fillStyle = 'rgb(' + parseInt(col[0]) + "," + parseInt(col[1]) + "," + parseInt(col[2]) + ')';
 			ctx.fillRect (x,screen.height-y,1,1);
@@ -266,27 +235,6 @@ $(function(){
 });
 
 </script>
-
-
-
-
-<h2>About</h2>
-
-<p>I've always been interested in Ray-Tracers - I spent hours playing about with <em><a href = "http://www.povray.org/">Povray</a></em> back in high school &mdash; the idea that you can make such realistic pictures algorithmically fascinates me. I've started writing a couple of my own over the years, but always shelved them around when I hit a nasty vector issue.</p>
-
-<p>Vector maths is tricky.</p>
-
-<p>But when I opened up my text editor this morning to play with the canvas element some more, I knew that something big was in order, bigger than <a href = "http://peterbraden.co.uk/article/pong">pong</a>, bigger than <a href = "http://peterbraden.co.uk/article/tetrisnightmares">tetris</a>. I was going to write a ray-tracer in the browser in the canvas element.</p>
-
-<p>And 8 hours later it's done. Nothing revolutionary, but satisfyingly realistic.</p>  
-
-<p>
-View the page source to check out the code - there's only about 200 lines of it and it's pretty simple to follow. It's simple Phong shading on sphere and plane primitives.</p>
-
-<p>
-I had originally planned to distribute the computational load between multiple browsers using a cross-browser map-reduce. But I think that's a project for another day.</p>	
-	
-<p><em>I'm not the first to make a canvas based ray-tracer. It seems there's <a href = "http://www.flog.co.nz/journal/javascript-raytracer/">other</a> <a href = "http://jupiter909.com/mark/jsrt.html">people</a> who like pointless code too.</em></p>
 
 	</body>	
 </html>	
