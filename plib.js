@@ -43,6 +43,13 @@ plib.v3 = plib.v3 || {};
 plib.v3.add = function(p1, p2){
 	return [p1[0] + p2[0], p1[1]+ p2[1], p1[2] + p2[2]];
 }
+plib.v3.cross = function(a, b){
+	var xh = a[1] * b[2] - b[1] * a[2];
+	var yh = a[2] * b[0] - b[2] * a[0];
+	var zh = a[0] * b[1] - b[0] * a[1];
+	return [xh,yh,zh]
+
+}
 plib.v3.dot = function(r1, r2){
 	return r1[0] * r2[0] + r1[1] * r2[1] + r1[2] * r2[2] 
 }
@@ -84,7 +91,7 @@ plib.forRange = function(func, a, b, c){
 	var end = b?b:a;
 	var step = c?c:1;
 
-	var out = new Array((end - start) / step);
+	var out = new Array((end-1 - start) / step);
 	for (var i=start; i<end; i+=step){
 		out[i] = func(i);
 	}

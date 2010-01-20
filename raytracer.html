@@ -7,7 +7,7 @@
 <h1>Tracing Rays</h1>	
 
 
-<canvas id = "rays" width = "400" height = "200">
+<canvas id = "rays" width = "500" height = "250">
 This only works in a modern browser that supports the &lt;canvas&gt; element. For example Firefox 3.5+, Safari or Chrome.
 </canvas>
 
@@ -77,23 +77,106 @@ rays.CheckerYPlane = function(y, col1, col2){
 	
 }
 
+rays.Camera = function(location, lookat, angle, width, height, up){
+	this.up = up || [0.0,1.0,0.0];
+	this.location = location;
+	this.lookat = lookat;
+	this.angle = angle;
+	
+	this.camz = plib.v3.normalise(plib.v3.sub(lookat, location));
+	this.camx = plib.v3.normalise(plib.v3.cross(this.up, this.camz));
+	this.camy = plib.v3.normalise(plib.v3.cross(this.camx, plib.v3.sub([0,0,0], this.camz)));
+	
+	
+	this.tax = Math.tan(angle);
+	this.tay = Math.tan((height/width) * angle)
+	
+	this.getRay = function(x,y){
+		var xdir = plib.v3.scale(this.camx, (x - 0.5) * this.tax);
+		var ydir = plib.v3.scale(this.camy, (y - 0.5) * this.tay);
+		
+		var pt = plib.v3.add(this.camz, plib.v3.add(xdir, ydir));
+		
+		//postMessage("DBG2 " + this.location + " |  " +pt + " | " + plib.v3.sub(pt, this.location) );
+		return [this.location, pt]
+	
+	}
+	
+}
+rays.intToColor = function(i){
+	var c = [i % 256, (i>>8) % 256, (i>>16) % 256]
+	return 'rgb(' + parseInt(c[0]) + "," + parseInt(c[1]) + "," + parseInt(c[2]) + ')';
+}
 
-/** Scene Params **/
-rays.eye = [0,0,0];
-rays.cam_dist = 200; /* Cam plane is x,y,cam_dist */
-rays.ambient = 0.1;
-rays.max_depth = 1;
+rays.pixelToInt = function(c){
+	c[0] = Math.max(0, Math.min(c[0], 255));
+	c[1] = Math.max(0, Math.min(c[1], 255));
+	c[2] = Math.max(0, Math.min(c[2], 255));
 
-rays.scene = {}
-rays.scene.objects = [
-	new rays.Sphere(pos = [300,0,900], radius = 200, color = [0xff,0,0], phong = 20, reflection = 0.2),
-	new rays.Sphere(pos = [0,100,1200], radius = 300, color = [0,0,0xff], phong = 10, reflection = 0.6),
-	new rays.CheckerYPlane(-200, [0x33,0x33,0x33], [0xdd,0xdd,0xdd])
-	];
-rays.scene.lights = [
-/*	 [[x,y,z], intensity(0-1), color] */
-	[[-300,300,0], 0.9, [0xff, 0xff, 0xff]]
-]
+	return parseInt(c[0] + (c[1] << 8) + (c[2] << 16));
+}
+
+rays.intAsHex = function(i){
+	return i.toString(16);
+}
+
+rays.intAsChar = function(i){
+	return i.toString(36);
+}
+
+rays.encodeLine = function(line){
+	//Diff Encoding & Run Length encoding
+	var out = []
+	var rl = 0;
+	var prev = 0;
+	for(var i =0; i<line.length; i++){
+		if (line[i] == prev){
+			rl +=1;
+		}else{
+			if (rl !=0 ){
+				out.push("_");
+				out.push(rl);
+				rl = 0;
+			}
+			out.push(rays.intAsChar(line[i] - prev));
+			prev = line[i]; 
+		}	
+	}	
+	if (rl !=0 ){
+		out.push("_");
+		out.push(rl);
+		rl = 0;
+	}	
+	
+	return out.join(",");
+}
+
+rays.decodeLine = function(line){
+	var x = line.split(",");
+	
+	var out = [];
+	var prev = 0;
+	for(var i =0;i<line.length; i++){
+		var c = x[i];
+		if(c == "_"){
+			for (var j = 0; j<parseInt(x[i+1]); j++){
+				out.push(prev);
+			}	
+			i +=1;
+		} else{
+			var y = parseInt(c, 36);
+			out.push(y + prev);
+			prev = y + prev;
+		}	
+	}
+	return out;
+}
+
+
+
+
+
+
 
 
 /**
@@ -177,6 +260,68 @@ rays.trace = function(ro, rd, depth){
 	}
 }
 
+rays.getRay = function(x,y, width, height){
+	return plib.v3.sub([x - width/2, y - height/2, rays.cam_dist], rays.eye);
+}
+
+
+/**
+* Map renders a single line of the image
+*
+* This is probably the right sort of size chunk of computation.
+*
+* Args is [ymin, ymax, xmin, xmax, screenwidth, screenheight]
+*/
+rays.map = function(args, callback){
+	var x = args[2];
+	var y = args[0];
+	var busy = false;
+	var res = [];
+	
+	var i = 0;
+	
+	//Because a line may take a while, setInterval to allow other computation
+	var kill_iter = false; //Screw Firefox's crappy worker implementation
+	
+	var iter = setInterval(function(){
+		if (!busy && !kill_iter){
+			busy = true;
+			if (x >= args[3] && y>=args[1]){
+				clearInterval(iter);
+				callback(args, rays.encodeLine(res));
+				busy = false;
+				kill_iter = true;
+			}
+			if (rays.antialias){
+				var tot = [0.0,0.0,0.0];
+				
+				var rot_grid = [[0.2, 0.2], [0.2, 0.8], [0.8, 0.2], [0.8, 0.8]];
+				
+				for(var s = 0; s < rot_grid.length; s++){
+					var ray = rays.scene.camera.getRay((x + rot_grid[s][0])/(0.0 + args[3]),(y + rot_grid[s][1])/(0.0 + args[4])); 
+					var col = rays.trace(ray[0], ray[1]);
+					tot = plib.v3.add(tot, col);
+				}
+				
+				res[i] = rays.pixelToInt(plib.v3.scale(tot, 1.0/(4.0)));
+				//postMessage("DBG: " + ray1 + " | "  + ray2 + " | " + res[i]  + " -> " + x + ", " + y);
+			}else{
+				var ray = rays.scene.camera.getRay(x/(0.0 + args[3]),y/(0.0 + args[4])); 
+				res[i] = rays.pixelToInt(rays.trace(ray[0], ray[1]));
+			}	
+						
+			if (x>=args[3]){
+				y++;
+				x = args[2];
+			}else{
+				x ++;
+			}
+			i ++;	
+			busy = false;
+		}		
+	},0);
+}
+
 
 /**
 *	Distribute each pixel
@@ -220,6 +365,108 @@ rays.renderImage = function(screen, ctx){
 }
 
 
+
+
+var badoomph = badoomph || {};
+
+badoomph.doMap = function(resp, callback){
+	if (window.Worker && badoomph.workerscript){		
+		if (!badoomph.worker){	
+			badoomph.worker = new Worker(badoomph.workerscript)
+			badoomph.worker.onmessage = function(event){
+				//console.log(event.data);
+				e = JSON.parse(event.data)
+				if (e.status == 'success'){
+					callback(e.args, e.res);
+				}
+				
+			}
+			badoomph.worker.onerror = function(event){throw event.data;}
+		}
+		badoomph.worker.postMessage(JSON.stringify({'status' : 'map' , 'data' : resp['args']}));
+	}else{
+		rays.map(resp['args'], callback);
+	}
+}
+
+
+
+badoomph.localProcess = function(data){
+	var run = function(ind){
+		if (ind >= data.length){
+			return
+		}
+		console.log("Rendering Line", ind);
+		badoomph.doMap({'args' : data[ind]}, function(args, res){
+			rays.handleResult([{'args' : args, 'res' : res}], function(){
+				run(++ind);
+			});
+		});
+	}
+	
+	run(0);
+}
+
+/* Render the result */
+rays.handleResult = function(rows, callback){
+	var scrn = $("#rays")[0];
+	var ctx = scrn.getContext('2d');
+	$.each(rows, function(){
+		args = this['args'];
+		data = rays.decodeLine(this['res']);
+		var y = args[0];
+		//if ($.inArray(y, rays.rendered) < 0){
+		//	rays.rendered.push(y);
+		var x = args[2]
+		for(var i = 0; y<args[1]; i++){
+			
+			var c = rays.intToColor(data[i]);	
+			ctx.fillStyle = c;
+			ctx.fillRect (x,scrn.height-y,1,1);
+			if (x >= args[3]){
+				y ++;
+				x = args[2];
+			} else{
+				x++;
+			}
+		}
+		//}	
+	});
+	if (callback){
+		return callback();
+	}	
+}
+//rays.rendered = [];
+
+
+
+
+
+/** Scene Params **/
+rays.eye = [0,0,0];
+rays.cam_dist = 200; /* Cam plane is x,y,cam_dist */
+rays.ambient = 0.1;
+rays.max_depth = 1;
+rays.antialias = 4;//Num samples
+
+rays.scene = {}
+rays.scene.objects = [
+	new rays.Sphere(pos = [3.0,5.0,5.0], radius = 5.0, color = [0xff,0,0], phong = 20, reflection = 0.2),
+	new rays.Sphere(pos = [0,5.0,0], radius = 5.0, color = [0,0,0xff], phong = 20, reflection = 0.2),
+	new rays.Sphere(pos = [-3.0,5.0, 5.0], radius = 5.0, color = [0x00,0xff,0x00], phong = 30, reflection = 0.2),
+	new rays.CheckerYPlane(0.0, [0x33,0x33,0x33], [0xdd,0xdd,0xdd])
+	];
+rays.scene.lights = [
+/*	 [[x,y,z], intensity(0-1), color] */
+	[[-300,300,0], 0.9, [0xff, 0xff, 0xff]]
+]
+rays.scene.camera = new rays.Camera([0.0,10.0,-50.0], [0.0,5.0,0.0], Math.PI/4, 5, 4);
+
+
+
+
+
+
 /** Onload setup the canvas and do shizzle **/
 $(function(){
 	var screen = $("#rays")[0];
@@ -227,13 +474,18 @@ $(function(){
 	
 	ctx.fillStyle = "#555";
 	ctx.fillRect (0, 0, screen.width, screen.height);
-	
+
+	var data = plib.forRange(
+		function(x){
+			return [x, x+1, 0, screen.width, screen.width, screen.height];
+		},
+		0, screen.height
+	);
 	$("#start_raytracer").click(function(){
-		rays.renderImage(screen, ctx);
+		badoomph.localProcess(data);
 	});
 	
 });
-
 </script>
 
 	</body>	
