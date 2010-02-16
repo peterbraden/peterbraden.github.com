@@ -34,6 +34,14 @@ plib.v2.sub = function(p1, p2){
 	return [p1[0] - p2[0], p1[1] - p2[1]];
 }
 
+plib.v2.rotate = function(vec, pivot, angle){
+	return [
+		(vec[0] - pivot[0]) * Math.cos(angle) - (vec[1] - pivot[1])* Math.sin(angle) + pivot[0],
+		(vec[0] - pivot[0]) * Math.sin(angle) + (vec[1] - pivot[1])* Math.cos(angle) + pivot[1]
+		]
+}
+
+
 
 /*****************************************************************************
  * 3D Vectors
