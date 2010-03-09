@@ -4,7 +4,19 @@
 		<script src = 'http://ajax.googleapis.com/ajax/libs/jquery/1.3.2/jquery.min.js'></script>
 		<style type='text/css'>
 body{font-family:'helvetica', sans; font-size:10px; background-color:#ddd; color:#444;}
-#cont{position:relative; width:1200px; height:350px;}
+
+p.dat{
+	position:  absolute;
+	padding:0;
+	margin:0;
+	overflow:hidden;
+	font-size:8px;
+	height:16px;
+	border-right : 1px solid #f00;
+	border-left : 1px solid #f00;
+	}
+
+#cont{position:relative; width:1000px; height:350px;}
 #viewport{width:1000px; overflow-x:scroll; float:left;}
 #detail{width:200px; float:right; border:1px solid #555; height:350px;}
 		</style>
@@ -45,34 +57,78 @@ var history_data = [
 ];
 
 
+var history_people = [
+	//Cyrus the Great
+	{begins : "-576", ends : "-530",
+	 text : "Cyrus The Great", 
+	 href : 'http://en.wikipedia.org/wiki/Cyrus_the_Great' },
+	 
+	// Alexander The Great 
+	{begins : "-356", ends : "-323", 
+	text : "Alexander The Great", 
+	href : 'http://en.wikipedia.org/wiki/Alexander_the_Great'},
+	
+	// Emperor Justinian
+	{begins : "483", ends : "565-11-14",
+	text : "Justinian",
+	href : 'http://en.wikipedia.org/wiki/Justinian' },
+	
+	// Henry VIII
+	{begins : "1491-06-28", ends : "1547-01-28",
+	text : "Henry VIII of England", 
+	href : "http://en.wikipedia.org/wiki/Henry_the_Eighth"},
+	
+	//Isaac Newton
+	{begins : "1643-01-04", ends : "1727-03-31",
+	text : "Isaac Newton",
+	href : "http://en.wikipedia.org/wiki/Isaac_newton" },
+	
+	//Abraham Lincoln
+	{begins : "1809-02-12", ends : "1865-04-15", 
+	text : "Abraham Lincoln",
+	href : "http://en.wikipedia.org/wiki/Abraham_Lincoln"
+	},
+	
+	//Winston Churchill
+	{begins : "1874-11-30", ends : "1965-01-24",
+	text : "Winston Churchill", 
+	href : "http://en.wikipedia.org/wiki/Churchill" }
+]; 
+
 
 
 
 $(function(){
-	$.each(history_data.sort(function(a,b){
-			return a['begins'] - b['begins'];
+	var parseTime = function(st){
+		if ( st.indexOf('-') > 0 ){ //Not contained, or not first
+			return parseInt(st.split('-')[0]);
+		}
+		
+		//No dashes, assume int year
+		return parseInt(st);
+		
+	} 
+
+
+	$.each(history_people.sort(function(a,b){
+			return parseTime(a['begins']) - parseTime(b['begins']);
 		}), function(x){
 			var d = this;
 		
 		if (this['ends']){
-			var right = Math.log(1 - (d['ends'] - 2010)) * 100;
-			var width = (Math.log(1 - (d['begins'] - 2010)) * 100) - right;
-			var bgcol = '#999';
+			var right = ((parseTime(d['ends']) - 2010) *0.38); //Math.log(1 - (parseTime(d['ends']) - 2010)) * 100;
+			var width = ((parseTime(d['begins']) - 2010) *0.38)- right; //(Math.log(1 - (parseTime(d['begins']) - 2010)) * 100) - right;
+			var bgcol = '#fbb';
 		}else{
-			var right = Math.log(1 - (d['begins'] - 2010)) * 100;
+			var right = Math.log(1 - (parseTime(d['begins']) - 2010)) * 100;
 			var width = '';
 			var bgcol = 'transparent';
 		};
-		
-		var data = $('<p>' + this['text'] + '</p>').css({
-			position:'absolute',
-			padding:0,
-			margin:0, 
-			right: right,
-			width: width,
-			height: '14px',
+		console.log(right);
+		var data = $('<p class="dat">' + this['text'] + '</p>').css({
+			right: Math.abs(right),
+			width: Math.abs(width),
 			'background-color':bgcol,
-			'border-right': '1px solid #000',
 			top: (x%20)*14,
 			cursor: d['detail'] ? 'pointer' : '',
 		}).click(function(){
