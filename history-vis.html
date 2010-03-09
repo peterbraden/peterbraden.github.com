@@ -68,10 +68,48 @@ var history_people = [
 	text : "Alexander The Great", 
 	href : 'http://en.wikipedia.org/wiki/Alexander_the_Great'},
 	
+	// Julius Caeser
+	{begins : "-100", ends : "-44", 
+	text : "Julius Caesar", 
+	href : 'http://en.wikipedia.org/wiki/Alexander_the_Great'},
+
+	// Cleopatra
+	{begins : "-69", ends : "-30", 
+	text : "Cleopatra", 
+	href : 'http://en.wikipedia.org/wiki/Cleopatra'},
+	
 	// Emperor Justinian
 	{begins : "483", ends : "565-11-14",
 	text : "Justinian",
 	href : 'http://en.wikipedia.org/wiki/Justinian' },
+	
+	//Eric the Red
+	{begins : "950", ends : "1003",
+	text : "Eric the Red",
+	href : 'http://en.wikipedia.org/wiki/Erik_the_Red' },
+	
+	//Macbeth
+	{begins : "1005", ends : "1057",
+	text : "Macbeth",
+	href : 'http://en.wikipedia.org/wiki/Macbeth_I_of_Scotland',
+	tags : ['king-scotland'] },
+	
+	// William I
+	{begins : "1142", ends : "1214-12-14",
+	text : "William I of Scotland",
+	href : 'http://en.wikipedia.org/wiki/William_I_of_Scotland',
+	tags : ['king-scotland'] },
+
+	// Genghis Khan
+	{begins : "1162", ends : "1227",
+	text : "Genghis Khan",
+	href : 'http://en.wikipedia.org/wiki/Genghis_khan'},
+	
+	// Leonardo Da Vinci
+	{begins : "1452-04-15", ends : "1519-05-02",
+	text : "Leonardo Da Vinci", 
+	href : "http://en.wikipedia.org/wiki/Da_vinci"},
+
 	
 	// Henry VIII
 	{begins : "1491-06-28", ends : "1547-01-28",
@@ -124,7 +162,6 @@ $(function(){
 			var width = '';
 			var bgcol = 'transparent';
 		};
-		console.log(right);
 		var data = $('<p class="dat">' + this['text'] + '</p>').css({
 			right: Math.abs(right),
 			width: Math.abs(width),
@@ -134,7 +171,11 @@ $(function(){
 		}).click(function(){
 			if (d['detail']){
 				$('#detail').html('<p>' + d['detail'] + '</p>');
-			} else {
+			} 
+			else if (d['href']){
+				$('#detail').html('<a href="' + d['href'] + '">' + d['text'] + "(" + d['href'] + "</a>");
+			}	
+			else {
 				$('#detail').html('');
 			}	
 		})
