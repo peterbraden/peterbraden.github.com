@@ -1,0 +1,200 @@
+<html>
+	<head>
+		<script src = 'http://ajax.googleapis.com/ajax/libs/jquery/1.3.2/jquery.min.js'></script>
+		<script src = './plib.js'></script>
+		<style type = "text/css">
+body{padding:0; margin:0;}
+div{padding:2em; margin:2em auto; float:left;}		
+		</style>
+		
+		<script type="text/javascript">
+
+var CellMaze = function(opts){
+	opts = opts || {};
+	
+	var numCells = opts.numCells || [20, 20],
+		cells = []
+		visited = [];
+		
+	for (var i = 0; i < numCells[1]; i++){
+		for (var j=0; j < numCells[0]; j++){
+			cells.push({id : i * numCells[0] + j, data : [j,i], connections : []});
+		}
+	}	
+	
+	var start = cells[0], finish = cells[cells.length-1];
+	
+	var mazeNode = function(node){
+		var neighbors = [];
+		visited.push(node.id);
+		
+		var x = 1
+		var y = numCells[0] 
+		
+		if (node.data[0]>0){
+			neighbors.push(cells[node.id - x]);
+		}		
+				
+		if (node.data[0] < (numCells[0] -1)){		
+			neighbors.push(cells[node.id + x]);
+		}
+		
+		if (node.data[1] > 0){ 
+			neighbors.push(cells[node.id - y]);
+		}	
+				
+		if (node.data[1] < (numCells[1]-1)){
+			neighbors.push(cells[node.id + y]);
+		}
+		
+		plib.randomShuffle(neighbors);
+
+		for (var ind in neighbors){
+			var cell = neighbors[ind];
+			if (visited.indexOf(cell.id) == -1){
+				node.connections.push(cell.id)
+				cell.connections.push(node.id) // BiDirectional link
+				mazeNode(cell);
+			}
+		}	
+			
+	}
+	
+	mazeNode(start);//Start	
+
+	return {
+		numCells : numCells,
+		start : start,
+		finish : finish,
+		cells : cells,
+		drawMaze : function(canv){
+			var ctx = canv.getContext('2d');
+			var dim = [canv.width, canv.height];
+			var cellDim = [dim[0]/numCells[0], dim[1]/numCells[1]];
+			
+			var drawLine = function(p1, p2){
+				ctx.beginPath();
+				ctx.lineTo(p1[0], p1[1]);
+				ctx.lineTo(p2[0], p2[1]);
+				ctx.stroke();
+			}
+			
+			var drawCircle = function(pos, rad){
+				ctx.beginPath();
+				ctx.arc(pos[0],pos[1],rad,0, 2*Math.PI, true);
+				ctx.fill();
+			}
+		
+			for (var ind in this.cells){
+				var node = this.cells[ind];
+
+				var tl = [node.data[0] * cellDim[0], node.data[1] * cellDim[1]],
+					tr = [node.data[0] * cellDim[0], (node.data[1]+1) * cellDim[1]],
+					bl = [(node.data[0]+1) * cellDim[0], node.data[1] * cellDim[1]],
+					br = [(node.data[0]+1) * cellDim[0], (node.data[1]+1) * cellDim[1]];
+											
+				if (node.data[0]>0 && node.connections.indexOf(cells[node.id - 1].id) == -1){
+					drawLine(tl,tr)
+				}			
+	
+				if (node.data[1] > 0 && node.connections.indexOf(cells[node.id - numCells[0]].id) == -1){
+					drawLine(tl,bl)			
+				}
+				
+				if (node.id == this.start.id || node.id == this.finish.id){
+					drawCircle([tl[0] + cellDim[0]/2, tl[0] + cellDim[1]/2], cellDim[0]/2);
+				}
+						
+			}
+			drawLine([0,0], [0, dim[1]])
+			drawLine([0,0], [dim[0], 0])
+			drawLine(dim, [0, dim[1]])
+			drawLine(dim, [dim[0], 0])
+		
+		},
+	};
+}	
+
+
+var depthFirst = function(maze, canv){
+	var ctx = canv.getContext('2d');
+	return {
+		path : [],
+		curr : maze.start,
+		backup : 0,
+		step : function(){
+			if (this.curr.id == maze.finish.id){
+				return;
+			}	
+			this.path.push(this.curr);
+			this.drawDot(this.curr);
+			
+			
+			for (var ind in this.curr.connections){
+				var node = maze.cells[this.curr.connections[ind]];
+				if (this.path.indexOf(node) == -1){
+					this.backup = 0;
+					this.curr = node
+					return;
+				} 
+			}
+			this.backup +=2;
+			console.log(this.backup, this.curr.id, this.path.length);
+			this.curr = this.path[this.path.length -this.backup];	 
+			
+		},
+		drawDot : function(node){
+			var x = ctx.fillStyle
+			var dim = [canv.width, canv.height];
+			var cellDim = [dim[0]/maze.numCells[0], dim[1]/maze.numCells[1]];
+			ctx.fillStyle = "#f00";
+			ctx.fillRect (node.data[0]* cellDim[0] + 1, node.data[1] * cellDim[1] + 1, cellDim[0]-2,cellDim[1]-2);
+			ctx.fillStyle = x;
+		}
+	
+	}
+
+}
+
+
+$(function(){
+	var m = CellMaze();
+	
+	var canv1 = $('#maze1')[0];
+	var df = depthFirst(m, canv1)
+	m.drawMaze(canv1);
+	setInterval(function(){df.step()}, 100);
+	
+	var canv2 = $('#maze2')[0];
+	m.drawMaze(canv2);
+	
+	var canv3 = $('#maze3')[0];
+	m.drawMaze(canv3);
+	
+	var canv4 = $('#maze4')[0];
+	m.drawMaze(canv4);
+
+});	
+
+		</script>
+
+	</head>
+	<body>
+		<div>
+			<h2>Depth First Search</h2>
+			<canvas width = '200' height='200' id = 'maze1' ></canvas>
+		</div>
+		<div>
+			<h2>Breadth First Search</h2>
+			<canvas width = '200' height='200' id = 'maze2' ></canvas>
+		</div>
+		<div>
+			<h2>A* (Dijkstra)</h2>
+			<canvas width = '200' height='200' id = 'maze3' ></canvas>
+		</div>
+		<div>
+			<h2>A* (Taxicab)</h2>
+			<canvas width = '200' height='200' id = 'maze4' ></canvas>
+		</div>	
+	</body>
+</html>	

@@ -105,3 +105,11 @@ plib.forRange = function(func, a, b, c){
 	}
 	return out
 }	
+
+
+/********
+ * Random
+ ******/
+ plib.randomShuffle = function(list){
+ 	list.sort(function(a,b){return (Math.random()>0.5) ? 1 : -1});
+ }
