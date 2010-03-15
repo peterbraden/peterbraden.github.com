@@ -5,16 +5,27 @@
 		<style type = "text/css">
 body{
 	font-family: "Futura", sans-serif;
-	background-color:#444;
+	background-color:#222;
 	}
 #cont{
 	width:700px;
 	background-color:#ccc;			
 	margin:0 auto;
-	padding:20px;
 	border-radius:30px;
 	text-align:center;
 	}
+#cont p{
+	padding:20px;
+	} 	
+#cont table{margin:0 auto;}	
+h1{
+	border-top-left-radius:30px;
+	border-top-right-radius:30px;
+	background-color:#555;
+	color:#ff9;
+	text-transform:uppercase;
+	text-shadow:#ff9 1px 1px 10px; 
+}
 		
 		</style>
 		
@@ -95,7 +106,7 @@ orbits.planet = function(pos, radius, color){
 		x: pos[0],
 		y: pos[1],
 		heading: [0,0],
-		gravity: radius * radius,
+		gravity: 3 *radius * radius,
 		color: color,
 		draw: function(ctx){
 				orbits.draw.fillcircle(ctx, [this.x, this.y], radius, color);
@@ -153,13 +164,12 @@ orbits.spaceship = function(pos, heading, radius, color){
 				if (this.target){
 					//Success
 					orbits.doLevel(s.time_alive);
-					
 						
 				}else{
 					orbits.ui.objs.push(orbits.ui.explosion([s.x, s.y]));
 					$('#score').text(0);
 					//TEMP
-					orbits.doLevel(s.time_alive);
+					//orbits.doLevel(s.time_alive);
 				}
 				return false;
 			}
@@ -229,6 +239,7 @@ orbits.ui.slingshot = function(st){
 				spaceship = orbits.spaceship(s.start, vec.scale(h, 100 * vec.len(h)), 0.01, '#f0f');
 				orbits.objects.push(spaceship);
 			});	
+			orbits.ui.objs.push(this);
 		},
 		unbind : function(jelem){
 			jelem.unbind();
@@ -238,11 +249,11 @@ orbits.ui.slingshot = function(st){
 			//if ((!spaceship) || orbits.objects.indexOf(spaceship) < 0){
 				orbits.draw.fillcircle(ctx, this.start, 0.005, '#ff5');
 			//}
-			if (visible && !vec.eq(this.start, this.finish)){
-				var l = vec.len(vec.sub(this.finish, this.start));
+			if (visible && !vec.eq(s.start, s.finish)){
+				var l = vec.len(vec.sub(s.finish, s.start));
 				for (var i = 1; i<= l*100; i++){
 					if (i%3==0){
-						orbits.draw.arc(ctx, this.start, 0.5, this.finish, 'rgb(255,' + parseInt((1-i/(l*100)) * 255) + ', 0)', 3, i/100);
+						orbits.draw.arc(ctx, s.start, 0.5, s.finish, 'rgb(255,' + parseInt((1-i/(l*100)) * 255) + ', 0)', 3, i/100);
 					}
 				};	
 				orbits.draw.fillcircle(ctx, this.start, 0.005, '#ff5');
@@ -251,7 +262,6 @@ orbits.ui.slingshot = function(st){
 		}
 			
 	};
-	orbits.ui.objs.push(s);
 	return s	
 }		
 
@@ -265,7 +275,7 @@ $(function(){
 	var levels = {
 			1 : {
 				objects: [
-					orbits.planet([0.5,0.5], 0.1,'#999'),
+					orbits.planet([0.5,0.5], 0.05,'#999'),
 					orbits.target([0.4, 0.8])
 					],
 				slingshot : orbits.ui.slingshot([0.2, 0.1])	
@@ -306,7 +316,7 @@ $(function(){
 			
 			// Update scoreboard
 			if(level>1){
-				$('#scoreboard').append('<p>Level ' + (level-1) + ':' + score + '</p>');
+				$('#scoreboard').append('<tr><td>Level ' + (level-1) + '</td><td>' + score + '</td></tr>');
 			}
 			
 			//Blank screen
@@ -317,8 +327,9 @@ $(function(){
 				ss.unbind($(screen));
 			}	
 			orbits.objects = levels[level].objects;
+			
 			ss = levels[level].slingshot;
-		
+					
 			var time = 0;	
 			setInterval(
 				function(){
@@ -343,9 +354,9 @@ $(function(){
 	<body>
 			<div id="cont">
 			<h1>Orbits</h1>
-			<canvas width = '500' height='300' id = 'orbits' ></canvas>
+			<canvas width = '700' height='400' id = 'orbits' ></canvas>
 			<p id='score'>0</p>
-			<p id='scoreboard'></p>
+			<table id='scoreboard'></table>
 			<p>Try and get the purple ball onto the blue dot. The longer the orbit, the higher you'll score.</p>
 		</div>
 	</body>
