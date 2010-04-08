@@ -71,6 +71,14 @@ $(function(){
 					i++;
 				};
 				
+				$('#wipe').click(function(){
+					ctx.fillStyle = "#fff";
+					ctx.globalCompositeOperation = 'source-over';
+					ctx.fillRect (0, 0, screen.width, screen.height);
+					ctx.globalCompositeOperation = 'darker';
+					db.wipe();
+				});
+				
 				$('#draw').mousemove(function(e){
 					prev = mousepos;
 					mousepos = [event.pageX, event.pageY];
@@ -106,5 +114,6 @@ $(function(){
 	</head>
 	<body>
 		<canvas width = '900' height='500' id = 'draw' ></canvas>
+		<button id = "wipe" >Wipe</button>
 	</body>
 </html> 	
