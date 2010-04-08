@@ -53,11 +53,6 @@ $(function(){
 		
 	db.onload(function(){
 		var i = 0;
-		// TODO draw stored dots
-		var store = function(pos, rad){
-			db.put({_id: 'dot-' + i, pos:pos, rad:rad})
-			i++;
-		};
 		
 		db.view({
 			map : function(doc, emit){
@@ -69,38 +64,42 @@ $(function(){
 				$.each(view.rows, function(){
 					drawDot(this.value.pos, this.value.rad || 1);
 				});
+				i = view.rows.length;
+				
+				var store = function(pos, rad){
+					db.put({_id: 'dot-' + i, pos:pos, rad:rad})
+					i++;
+				};
+				
+				$('#draw').mousemove(function(e){
+					prev = mousepos;
+					mousepos = [event.pageX, event.pageY];
+					//console.log(mousepos, draw);
+					if (draw){
+						var rad = Math.sqrt(vec.len(vec.sub(prev, mousepos)));
+						//drawDot(mousepos, rad);
+						store(mousepos, rad);
+						var t = rad *10;
+						db.view({
+							map : function(doc, emit){
+								if (vec.len(vec.sub(doc.pos, mousepos)) <= t){
+									emit (doc._id, doc);
+								}	
+							},
+							finished : function(view){
+								for (r in view.rows){
+									drawLine(mousepos, view.rows[r].value.pos);
+								}
+							
+							}
+							
+						});
+						
+					}	
+				}).mousedown(function(){draw=true}).mouseup(function(){draw=false});
 			}
 		});
-		
-		
-	
-		$('#draw').mousemove(function(e){
-			prev = mousepos;
-			mousepos = [event.pageX, event.pageY];
-			//console.log(mousepos, draw);
-			if (draw){
-				var rad = Math.sqrt(vec.len(vec.sub(prev, mousepos)));
-				//drawDot(mousepos, rad);
-				store(mousepos, rad);
-				var t = rad *10;
-				db.view({
-					map : function(doc, emit){
-						if (vec.len(vec.sub(doc.pos, mousepos)) <= t){
-							emit (doc._id, doc);
-						}	
-					},
-					finished : function(view){
-						for (r in view.rows){
-							drawLine(mousepos, view.rows[r].value.pos);
-						}
-					
-					}
-					
-				});
-				
-			}	
-		}).mousedown(function(){draw=true}).mouseup(function(){draw=false});
-	});	
+	});			
 });
 		</script>
 
