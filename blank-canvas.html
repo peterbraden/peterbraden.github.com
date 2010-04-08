@@ -69,7 +69,7 @@ $(function(){
 				console.log(view.rows.length);
 				$.each(view.rows, function(){
 					console.log(this);
-					drawDot(this.pos, this.rad);
+					drawDot(this.value.pos, this.value.rad);
 				});
 			}
 		});
