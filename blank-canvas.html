@@ -68,7 +68,6 @@ $(function(){
 			finished : function(view){
 				console.log(view.rows.length);
 				$.each(view.rows, function(){
-					console.log(this);
 					drawDot(this.value.pos, this.value.rad || 1);
 				});
 			}
