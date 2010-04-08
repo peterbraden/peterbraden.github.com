@@ -83,7 +83,7 @@ $(function(){
 			if (draw){
 				var rad = Math.sqrt(vec.len(vec.sub(prev, mousepos)));
 				//drawDot(mousepos, rad);
-				store(mousepos);
+				store(mousepos, rad);
 				var t = rad *10;
 				db.view({
 					map : function(doc, emit){
