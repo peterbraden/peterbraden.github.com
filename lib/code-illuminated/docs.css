@@ -63,6 +63,7 @@ code {
     font-size: 70%;
     background-color: #f0f0f0;
     font-variant:normal;
+    letter-spacing:0.01em;
 }
 
 .divider {
