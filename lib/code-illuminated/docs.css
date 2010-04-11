@@ -56,12 +56,13 @@ body.code-illuminated {
     margin:0;
     color:#999;
 }
-.code {
+code {
     font-family: consolas, monaco, andale mono, monospace;
     float: left;
     white-space: pre;
     font-size: 70%;
     background-color: #f0f0f0;
+    font-variant:normal;
 }
 
 .divider {
