@@ -3,6 +3,30 @@
 		<script src = 'http://ajax.googleapis.com/ajax/libs/jquery/1.3.2/jquery.min.js'></script>
 		<script src = './plib.js'></script>
 		<style type = "text/css">
+body{
+	font-family: "Futura", sans-serif;
+	background-color:#222;
+	}
+#cont{
+	width:700px;
+	background-color:#ccc;			
+	margin:0 auto;
+	border-radius:30px;
+	text-align:center;
+	}
+#cont p{
+	padding:20px;
+	} 	
+#cont table{margin:0 auto;}	
+h1{
+	border-top-left-radius:30px;
+	border-top-right-radius:30px;
+	background-color:#555;
+	color:#ff9;
+	text-transform:uppercase;
+	text-shadow:#ff9 1px 1px 10px; 
+}
+		
 		</style>
 		
 		<script type="text/javascript">
@@ -82,7 +106,7 @@ orbits.planet = function(pos, radius, color){
 		x: pos[0],
 		y: pos[1],
 		heading: [0,0],
-		gravity: radius * radius,
+		gravity: 3 *radius * radius,
 		color: color,
 		draw: function(ctx){
 				orbits.draw.fillcircle(ctx, [this.x, this.y], radius, color);
@@ -139,10 +163,13 @@ orbits.spaceship = function(pos, heading, radius, color){
 				orbits.objects.splice(orbits.objects.indexOf(s), 1)
 				if (this.target){
 					//Success
-					$('#score').text('Success:' + s.time_alive);	
+					orbits.doLevel(s.time_alive);
+						
 				}else{
 					orbits.ui.objs.push(orbits.ui.explosion([s.x, s.y]));
 					$('#score').text(0);
+					//TEMP
+					//orbits.doLevel(s.time_alive);
 				}
 				return false;
 			}
@@ -186,6 +213,11 @@ orbits.ui.explosion = function(pos){
 
 orbits.ui.slingshot = function(st){
 	var spaceship, visible;
+	
+	var relCoord = function(c, elem){
+		return [c[0] - elem.offsetLeft, c[1] - elem.offsetTop]
+	}
+	
 	s = {
 		start:st,
 		finish:st,
@@ -200,24 +232,28 @@ orbits.ui.slingshot = function(st){
 				//s.start = [e.clientX, e.clientY];
 				
 			}).mousemove(function(e){
-				s.finish = orbits.fromCoord([e.clientX, e.clientY]);
+				s.finish = orbits.fromCoord(relCoord([e.pageX, e.pageY], this));
 			}).mouseup(function(e){
 				visible = false;
-				var h = vec.sub(s.start, orbits.fromCoord([e.clientX, e.clientY]));
+				var h = vec.sub(s.start, orbits.fromCoord(relCoord([e.pageX, e.pageY], this)));
 				spaceship = orbits.spaceship(s.start, vec.scale(h, 100 * vec.len(h)), 0.01, '#f0f');
 				orbits.objects.push(spaceship);
 			});	
+			orbits.ui.objs.push(this);
+		},
+		unbind : function(jelem){
+			jelem.unbind();
 		},
 		
 		draw: function(ctx){
 			//if ((!spaceship) || orbits.objects.indexOf(spaceship) < 0){
 				orbits.draw.fillcircle(ctx, this.start, 0.005, '#ff5');
 			//}
-			if (visible && !vec.eq(this.start, this.finish)){
-				var l = vec.len(vec.sub(this.finish, this.start));
+			if (visible && !vec.eq(s.start, s.finish)){
+				var l = vec.len(vec.sub(s.finish, s.start));
 				for (var i = 1; i<= l*100; i++){
 					if (i%3==0){
-						orbits.draw.arc(ctx, this.start, 0.5, this.finish, 'rgb(255,' + parseInt((1-i/(l*100)) * 255) + ', 0)', 3, i/100);
+						orbits.draw.arc(ctx, s.start, 0.5, s.finish, 'rgb(255,' + parseInt((1-i/(l*100)) * 255) + ', 0)', 3, i/100);
 					}
 				};	
 				orbits.draw.fillcircle(ctx, this.start, 0.005, '#ff5');
@@ -226,30 +262,89 @@ orbits.ui.slingshot = function(st){
 		}
 			
 	};
-	orbits.ui.objs.push(s);
 	return s	
 }		
+
+
+
 		
 $(function(){		
 	var screen = $("#orbits")[0];
 	var ctx = screen.getContext('2d');
+
+	var levels = {
+			1 : {
+				objects: [
+					orbits.planet([0.5,0.5], 0.05,'#999'),
+					orbits.target([0.4, 0.8])
+					],
+				slingshot : orbits.ui.slingshot([0.2, 0.1])	
+				},
+			2 : {
+				objects: [
+					orbits.planet([0.25,0.5], 0.05,'#999'),
+					orbits.planet([0.75,0.5], 0.05,'#999'),
+					orbits.target([0.4, 0.8])
+					],
+				slingshot : orbits.ui.slingshot([0.2, 0.1])	
+				},
+			
+			3 : {
+				objects: [
+					orbits.planet([0.25,0.5], 0.02,'#999'),
+					orbits.planet([0.75,0.5], 0.07,'#999'),
+					orbits.target([0.4, 0.8])
+					],
+				slingshot : orbits.ui.slingshot([0.2, 0.1])	
+				},
+	
+			4 : {
+				objects: [],
+				slingshot : {}
+			}	
+
+		}
 	
 	orbits.screen = screen
 	
-	orbits.objects = [
-		orbits.planet([0.5,0.5], 0.1,'#999'),
-		orbits.target([0.4, 0.8])
-		//orbits.moon(50.0, 50.0, [15000,-40], 10.0, '#f00'),
-	];
-
-	var time = 0;	
-	setInterval(
-		function(){
-			orbits.gameLoop(screen, ctx, 500);
-		}, 10);
+	var level = 1;
+	var ss;
 	
-	var ss = orbits.ui.slingshot([0.2, 0.1])
-	ss.bind($(screen));
+	orbits.doLevel = function(score){
+		score = score || 0;
+		if (levels[level]){
+			
+			// Update scoreboard
+			if(level>1){
+				$('#scoreboard').append('<tr><td>Level ' + (level-1) + '</td><td>' + score + '</td></tr>');
+			}
+			
+			//Blank screen
+			ctx.fillStyle = "rgba(40,40,40,1)";
+			ctx.fillRect (0, 0, screen.width, screen.height);
+	
+			if (ss){
+				ss.unbind($(screen));
+			}	
+			orbits.objects = levels[level].objects;
+			
+			ss = levels[level].slingshot;
+					
+			var time = 0;	
+			setInterval(
+				function(){
+					orbits.gameLoop(screen, ctx, 500);
+				}, 10);
+			ss.bind($(screen));
+			
+			level+=1;
+		} else {
+			//Game completed
+		}	
+	}
+	orbits.doLevel(1);
+		
+
 });	
 
 		
@@ -257,7 +352,12 @@ $(function(){
 
 	</head>
 	<body>
-		<canvas width = '500' height='300' id = 'orbits' ></canvas>
-		<p id='score'>0</p>
+			<div id="cont">
+			<h1>Orbits</h1>
+			<canvas width = '700' height='400' id = 'orbits' ></canvas>
+			<p id='score'>0</p>
+			<table id='scoreboard'></table>
+			<p>Try and get the purple ball onto the blue dot. The longer the orbit, the higher you'll score.</p>
+		</div>
 	</body>
 </html>	

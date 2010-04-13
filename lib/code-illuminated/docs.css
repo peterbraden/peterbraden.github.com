@@ -1,0 +1,93 @@
+body.code-illuminated {
+    font-family: palatino, palatino linotype, georgia, serif;
+    text-align: center;
+}
+
+.popup-enabled {
+    cursor: pointer;
+    border-bottom: dotted 1px black;
+}
+
+.popup {
+    position: absolute;
+    z-index: 100;
+}
+
+.popup .item {
+    cursor: pointer;
+    font-family: helvetica neue, arial, sans-serif;
+    background-color: #f0f0f0;
+    color: black;
+    padding: 3px;
+    border: black dotted;
+    border-width: 1px 1px 0 1px;
+}
+
+.popup .selected {
+    background-color: black;
+    color: white;
+}
+
+.popup .bottom {
+    border-bottom: 1px black dotted;
+}
+
+#content {
+    text-align: left;
+    margin: 0 auto;
+}
+
+.documentation {
+    float: left;
+    line-height: 1.4em;
+}
+
+.documentation h1, .documentation h2 {
+    font-weight: normal;
+    line-height: 1.4em;
+}
+
+.nums{
+    font-family: consolas, monaco, andale mono, monospace;
+    float:left;
+    white-space: pre;
+    font-size: 70%;
+    background-color: #d0d0d0;
+    margin:0;
+    color:#999;
+}
+code {
+    font-family: consolas, monaco, andale mono, monospace;
+    float: left;
+    white-space: pre;
+    font-size: 70%;
+    background-color: #f0f0f0;
+    font-variant:normal;
+    letter-spacing:0.01em;
+}
+
+.divider {
+    clear: both;
+    height: 0;
+    line-height: 0;
+}
+
+/* Prettify */
+.str { color: #800; }
+.kwd { color: #b08; }
+.com { color: #080; font-style:italic;}
+.typ { color: #000; }
+.lit { color: #00f; }
+.pun { color: #660; }
+.pln { color: #000; }
+.tag { color: #008; }
+.atn { color: #606; }
+.atv { color: #080; }
+.dec { color: #606; }
+
+
+.toc li.h1{margin-left:10px;}
+.toc li.h2{margin-left:20px;}
+.toc li.h3{margin-left:30px;}
+.toc li.h4{margin-left:40px;}
+.toc li.strong{margin-left:50px;}

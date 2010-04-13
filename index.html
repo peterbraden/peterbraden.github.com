@@ -1,5 +1,6 @@
 <html>
 	<head>
+		<link type='text/css' rel='stylesheet' href = './lib/code-illuminated/docs.css' />
 		<style type = 'text/css'>
 body{background-color:#eee;font-family:'Gill sans', helvetica, arial, sans; font-variant:small-caps; letter-spacing:0.2em;}
 
@@ -12,13 +13,21 @@ li#b{background-color:#f95;}
 li#c{background-color:#5f9;}
 li#d{background-color:#f59;}
 li#e{background-color:#95f;}
-li#f{background-color:#9f5;}			
+li#f{background-color:#9f5;}
+li#g{background-color:#59f;}	
+li#h{background-color:#f9f;}			
+		
 		</style>
 		<script src = 'http://ajax.googleapis.com/ajax/libs/jquery/1.3.1/jquery.min.js'></script>
 		<script type = 'text/javascript'>
 		//There's a bug in jquery 1.3.2 on the $('ul').fadeOut.
 $(function(){
-	$('a').click(function(){return false});	
+		$('a').click(function(){
+			var _t = $(this);
+			$('ul').fadeOut(500, function(){
+				window.location = _t.attr('href');
+			});
+			return false});	
 	$('li').click(function(){
 		var _t = $(this);
 		$('ul').fadeOut(500, function(){
@@ -28,15 +37,36 @@ $(function(){
 	
 });
 		</script>
+		<script src = './lib/code-illuminated/wikicreole.js'></script>
+		<script src = './lib/code-illuminated/prettify.js'></script>
+		<script src = './lib/code-illuminated/docs.js'></script>
 	</head>
 	<body>
-		<ul>
-			<li id='a'><a href = 'http://peterbraden.co.uk'>PeterBraden.co.uk</a></li>
-			<li id='b'><a href = 'http://github.com/peterbraden'>Github</a></li>
-			<li id='c'><a href = 'http://peterbraden.co.uk/article/resume'>Resum&eacute;</a></li>
-			<li id='d'><a href = 'orbits.html'>orbits (game)</a></li>
-			<li id='e'><a href = 'raytracer.html'>js raytracer</a></li>
-			<li id='f'><a href = 'swirly.html'>swirly red worms</a></li>
-		<ul>	
+		<div id = "content">
+			<div id="overview" class="documentation">
+				<ul>
+					<li id='a'><a href = 'http://peterbraden.co.uk'>PeterBraden.co.uk</a></li>
+					<li id='b'><a href = 'http://github.com/peterbraden'>Github</a></li>
+					<li id='c'><a href = 'http://peterbraden.co.uk/article/resume'>Resum&eacute;</a></li>
+					<li id='d'><a href = 'orbits.html'>orbits (game)</a></li>
+					<li id='e'><a href = 'raytracer.html'>js raytracer</a></li>
+					<li id='f'><a href = 'swirly.html'>swirly red worms</a></li>
+					<li id='g'><a href = 'maze.html'>Mazes and graph algorithms</a></li>
+					<li id='h'><a href = 'blank-canvas.html'>Drawing with BrowserCouch</a></li>
+				</ul>
+			</div>
+		</div>
+		
+			
+			<script type="text/javascript">
+				var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+				document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+			</script>
+			<script type="text/javascript">
+				try {
+					var pageTracker = _gat._getTracker("UA-1858027-4");
+					pageTracker._setDomainName(".github.com");
+					pageTracker._trackPageview();
+					} catch(err) {}</script>
 	</body>
 </html>	
