@@ -2,6 +2,7 @@ from optparse import OptionParser
 import json
 import sys
 
+
 def get_file(*args, **kwargs):
 	filename = kwargs.get('f', 'todo.json')
 	
@@ -53,7 +54,7 @@ def add(*args, **kwargs):
 	put_data(todo, *args, **kwargs)
 	
 	
-def list(*args, **kwargs):
+def ls(*args, **kwargs):
 	items = get_data(*args, **kwargs)
 	
 	colors = {
@@ -66,15 +67,30 @@ def list(*args, **kwargs):
 
 	for x in items:
 		if (not x.get('done')) or kwargs.get('a'):
+			prereqs = [y for y in x.get('prereq', [])] or ""
+			if prereqs:
+				prereqs = "(Reqs. " + " ".join(prereqs) + ")" 
+			
 			fmt = {
 				'done' : x.get('done') and 'X' or ' ',
 				'index' : x.get('index', '?'),
 				'name' : x['name'],
 				'col' : kwargs.get('c') and (x.get('importance') is not None) and colors.get(x['importance']) or "",
 				'defcol' : default,
+				'prereqs' : prereqs,
 			}
-			print "%(col)s%(done)s %(index)s: %(name)s%(defcol)s" % fmt
-		
+			print "%(col)s%(done)s %(index)s: %(name)s%(defcol)s %(prereqs)s" % fmt
+
+
+def add_prereq(*args, **kwargs):
+	item_id = int(args[0])
+	item, save = get_item(item_id, *args, **kwargs)
+	print item
+	item['prereq'] = list(set(item.get('prereq', []) + list(args[1:]))) 
+	
+	save() 
+	
+			
 
 def do_task(*args, **kwargs):
 	item_id = int(args[0])
@@ -92,9 +108,10 @@ def importance(*args, **kwargs):
 
 commands = {
 	'add' : add,
-	'ls' : list,
+	'ls' : ls,
 	'do' : do_task,
 	'importance' : importance,
+	'pre' : add_prereq,
 	}
 
 
