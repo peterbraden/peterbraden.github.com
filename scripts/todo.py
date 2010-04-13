@@ -103,6 +103,7 @@ if __name__ == '__main__' :
 
 	parser.add_option('-a', action='store_true')
 	parser.add_option('-c', action='store_true')
+	parser.add_option('-f')
 	(options, args) = parser.parse_args()
 
 	if not args:
