@@ -1,6 +1,7 @@
 from optparse import OptionParser
 import json
 import sys
+import datetime
 
 
 def get_file(*args, **kwargs):
@@ -44,12 +45,15 @@ def get_item(item_id, *args, **kwargs):
 
 # ==== 
 
+def parse_add(args):
+	return {'name' : " ".join(args), 'added' : str(datetime.datetime.now())}
 
 def add(*args, **kwargs):
-	obj = {'name' : " ".join(args)}
+	obj = parse_add(args)
 	todo = get_data(*args, **kwargs)
 	index = reduce(max, [x.get('index', 0) for x in todo])+1
 	obj['index'] = index
+	print index
 	todo.append(obj)
 	put_data(todo, *args, **kwargs)
 	
@@ -66,10 +70,10 @@ def ls(*args, **kwargs):
 	default = "\033[0;0;0m"
 
 	for x in items:
-		if (not x.get('done')) or kwargs.get('a'):
+		if ((not x.get('done')) and (not x.get('deleted'))) or kwargs.get('a'):
 			prereqs = [y for y in x.get('prereq', [])] or ""
 			if prereqs:
-				prereqs = "(Reqs. " + " ".join(prereqs) + ")" 
+				prereqs = "(Reqs. " + ", ".join(prereqs) + ")" 
 			
 			fmt = {
 				'done' : x.get('done') and 'X' or ' ',
@@ -85,7 +89,6 @@ def ls(*args, **kwargs):
 def add_prereq(*args, **kwargs):
 	item_id = int(args[0])
 	item, save = get_item(item_id, *args, **kwargs)
-	print item
 	item['prereq'] = list(set(item.get('prereq', []) + list(args[1:]))) 
 	
 	save() 
@@ -106,12 +109,20 @@ def importance(*args, **kwargs):
 	item['importance'] = importance
 	save()
 
+def remove(*args, **kwargs):
+	item_id = int(args[0])
+	item, save = get_item(item_id, *args, **kwargs)	
+	item['deleted'] = True
+	save()
+
+
 commands = {
 	'add' : add,
 	'ls' : ls,
 	'do' : do_task,
 	'importance' : importance,
 	'pre' : add_prereq,
+	'rm' : remove,
 	}
 
 
