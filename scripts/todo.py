@@ -25,7 +25,8 @@ def put_file(val, *args, **kwargs):
 	filename = kwargs.get('f', 'todo.json')
 	
 	f = open(filename, 'w')
-	f.write(json.dumps(val))
+	data = json.dumps(val, indent=2)
+	f.write(data)
 
 def put_data(val, *args, **kwargs):
 	put_file({'0' : val}, *args, **kwargs)
@@ -42,11 +43,23 @@ def get_item(item_id, *args, **kwargs):
 		sys.exit(1)
 	return item[0], save	
 
-
+def get_item_id(items, index):
+	for x in items:
+		if x.get('index') == index:
+			return x
+	return None		
+ 
 # ==== 
 
+
 def parse_add(args):
-	return {'name' : " ".join(args), 'added' : str(datetime.datetime.now())}
+	tags = []
+	for i, x in enumerate(args):
+		if x[0] == '#':
+			tags.append(x[1:])
+			args.pop(i)
+			
+	return {'name' : " ".join(args), 'tags' : tags, 'added' : str(datetime.datetime.now())}
 
 def add(*args, **kwargs):
 	obj = parse_add(args)
@@ -61,19 +74,45 @@ def add(*args, **kwargs):
 def ls(*args, **kwargs):
 	items = get_data(*args, **kwargs)
 	
+	
+	#Goals
+
+	for i in items:
+		def ag(x,y):
+			if x.get('done') or x.get('deleted'):
+				for k, j in enumerate(y.get('prereq', [])):
+					y.get('prereq',[]).pop(k)
+				return
+				
+			if x.get('prereq'):
+				for p in x['prereq']:
+					n = get_item_id(items, int(p))
+					if n:
+						ag(n, x)
+						if kwargs.get('g') and ('goal' in i.get('tags', [])):
+							n['goals'] = "(Goal %s: %s)" % (i.get('index'), i['name'])
+		ag(i, i)
+	
+	
 	colors = {
 			0 : "\033[1;31;40m",
 			1 : "\033[1;33;40m",
-			2 : "\033[1;34;40m",
-			3 : '',
+			2 : "\033[1;36;40m",
+			3 : '\033[1;34;40m',
 	}
 	default = "\033[0;0;0m"
 
 	for x in items:
 		if ((not x.get('done')) and (not x.get('deleted'))) or kwargs.get('a'):
-			prereqs = [y for y in x.get('prereq', [])] or ""
+			
+		
+			
+			prereqs = x.get('prereq', []) or ""
 			if prereqs:
 				prereqs = "(Reqs. " + ", ".join(prereqs) + ")" 
+			tags = x.get('tags', '') or ''
+			if tags:
+				tags = " ".join(['#' + t for t in tags])
 			
 			fmt = {
 				'done' : x.get('done') and 'X' or ' ',
@@ -82,8 +121,10 @@ def ls(*args, **kwargs):
 				'col' : kwargs.get('c') and (x.get('importance') is not None) and colors.get(x['importance']) or "",
 				'defcol' : default,
 				'prereqs' : prereqs,
+				'tags' : tags,
+				'goals' : x.get('goals', '')
 			}
-			print "%(col)s%(done)s %(index)s: %(name)s%(defcol)s %(prereqs)s" % fmt
+			print "%(col)s%(done)s %(index)s: %(name)s %(tags)s%(defcol)s %(prereqs)s %(goals)s" % fmt
 
 
 def add_prereq(*args, **kwargs):
@@ -94,12 +135,20 @@ def add_prereq(*args, **kwargs):
 	save() 
 	
 			
+def tag(*args, **kwargs):
+	item_id = int(args[0])
+	item, save = get_item(item_id, *args, **kwargs)
+	item['tags'] = list(set(item.get('tags', []) + list(args[1:]))) 
+	
+	save() 
+
 
 def do_task(*args, **kwargs):
 	item_id = int(args[0])
 	item, save = get_item(item_id, *args, **kwargs)	
 	item['done'] = True
 	save()
+	#TODO - remove reqs
 
 
 def importance(*args, **kwargs):
@@ -123,6 +172,7 @@ commands = {
 	'importance' : importance,
 	'pre' : add_prereq,
 	'rm' : remove,
+	'tag' : tag,
 	}
 
 
@@ -131,6 +181,7 @@ if __name__ == '__main__' :
 
 	parser.add_option('-a', action='store_true')
 	parser.add_option('-c', action='store_true')
+	parser.add_option('-g', action='store_true')
 	parser.add_option('-f')
 	(options, args) = parser.parse_args()
 
