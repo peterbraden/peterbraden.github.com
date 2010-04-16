@@ -49,6 +49,43 @@ def get_item_id(items, index):
 			return x
 	return None		
  
+ 
+ 
+
+def get_ordered_items(*args, **kwargs):
+	items = get_data(*args, **kwargs)
+	
+	
+	#Goals
+
+	for i in items:
+		#node, parent
+		def ag(x,y):
+			x['_importance'] = min(x.get('importance', 100), x.get('_importance', 100))
+			if x.get('done') or x.get('deleted'):
+				for k, j in enumerate(y.get('prereq', [])):
+					if j == x:
+						y.get('prereq',[]).pop(k)
+				return
+			
+				
+			if y.get('importance') is not None:	
+				x['_importance'] = min(y['importance'] - 0.1, y.get('_importance', 100) - 0.1, x['_importance'])
+				if y['importance'] < x.get('importance',100):
+					x['importance'] = y['importance']
+					
+						
+			if x.get('prereq'):
+				for p in x['prereq']:
+					n = get_item_id(items, int(p))
+					if n:
+						ag(n, x)
+						if kwargs.get('g') and ('goal' in i.get('tags', [])):
+							n['goals'] = "(Goal %s: %s)" % (i.get('index'), i['name'])
+		ag(i, i)
+	items.sort(key = lambda x: x['_importance'])
+ 	return items
+ 
 # ==== 
 
 
@@ -72,27 +109,7 @@ def add(*args, **kwargs):
 	
 	
 def ls(*args, **kwargs):
-	items = get_data(*args, **kwargs)
-	
-	
-	#Goals
-
-	for i in items:
-		def ag(x,y):
-			if x.get('done') or x.get('deleted'):
-				for k, j in enumerate(y.get('prereq', [])):
-					y.get('prereq',[]).pop(k)
-				return
-				
-			if x.get('prereq'):
-				for p in x['prereq']:
-					n = get_item_id(items, int(p))
-					if n:
-						ag(n, x)
-						if kwargs.get('g') and ('goal' in i.get('tags', [])):
-							n['goals'] = "(Goal %s: %s)" % (i.get('index'), i['name'])
-		ag(i, i)
-	
+	items = get_ordered_items(*args, **kwargs)
 	
 	colors = {
 			0 : "\033[1;31;40m",
@@ -101,6 +118,8 @@ def ls(*args, **kwargs):
 			3 : '\033[1;34;40m',
 	}
 	default = "\033[0;0;0m"
+
+	
 
 	for x in items:
 		if ((not x.get('done')) and (not x.get('deleted'))) or kwargs.get('a'):
@@ -126,6 +145,40 @@ def ls(*args, **kwargs):
 			}
 			print "%(col)s%(done)s %(index)s: %(name)s %(tags)s%(defcol)s %(prereqs)s %(goals)s" % fmt
 
+
+def curr(*args, **kwargs):
+	items = get_ordered_items(*args, **kwargs)
+	items = [i for i in items if not i.get('deleted') and not i.get('done')]
+	x = items and items[0]
+	if not x: return
+	
+	colors = {
+			0 : "\033[1;31;40m",
+			1 : "\033[1;33;40m",
+			2 : "\033[1;36;40m",
+			3 : '\033[1;34;40m',
+	}
+	default = "\033[0;0;0m"
+
+	prereqs = x.get('prereq', []) or ""
+	if prereqs:
+		prereqs = "(Reqs. " + ", ".join(prereqs) + ")" 
+	tags = x.get('tags', '') or ''
+	if tags:
+		tags = " ".join(['#' + t for t in tags])
+	
+
+	fmt = {
+		'done' : x.get('done') and 'X' or ' ',
+		'index' : x.get('index', '?'),
+		'name' : x['name'],
+		'col' : kwargs.get('c') and (x.get('importance') is not None) and colors.get(x['importance']) or "",
+		'defcol' : default,
+		'prereqs' : prereqs,
+		'tags' : tags,
+		'goals' : x.get('goals', '')
+	}
+	print "%(col)s%(done)s %(index)s: %(name)s %(tags)s%(defcol)s %(prereqs)s %(goals)s" % fmt
 
 def add_prereq(*args, **kwargs):
 	item_id = int(args[0])
@@ -173,6 +226,7 @@ commands = {
 	'pre' : add_prereq,
 	'rm' : remove,
 	'tag' : tag,
+	'curr' : curr,
 	}
 
 
