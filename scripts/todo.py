@@ -2,7 +2,7 @@ from optparse import OptionParser
 import json
 import sys
 import datetime
-
+from json_couch import sync_l
 
 def get_file(*args, **kwargs):
 	filename = kwargs.get('f', 'todo.json')
@@ -13,11 +13,14 @@ def get_file(*args, **kwargs):
 	except Exception,e:
 		print e
 		todo = {'0':[]}
-	
+
 	return todo
 
 def get_data(*args, **kwargs):
 	data = get_file(*args, **kwargs)['0']
+
+	data = sync_l(data, 'todoapp', '0')
+
 	data.sort(key = lambda x:x.get('importance', 4))
 	return data
 
@@ -101,7 +104,7 @@ def parse_add(args):
 def add(*args, **kwargs):
 	obj = parse_add(args)
 	todo = get_data(*args, **kwargs)
-	index = reduce(max, [x.get('index', 0) for x in todo])+1
+	index = reduce(max, [x.get('index', 0) for x in todo] or [0])+1
 	obj['index'] = index
 	print index
 	todo.append(obj)
@@ -120,9 +123,9 @@ def ls(*args, **kwargs):
 	default = "\033[0;0;0m"
 
 	
-
+	items.reverse()
 	for x in items:
-		if ((not x.get('done')) and (not x.get('deleted'))) or kwargs.get('a'):
+		if ((not x.get('done')) and (not x.get('deleted')) and ('goal' not in x.get('tags', []))) or kwargs.get('a'):
 			
 		
 			
@@ -169,16 +172,16 @@ def curr(*args, **kwargs):
 	
 
 	fmt = {
-		'done' : x.get('done') and 'X' or ' ',
+		'done' : kwargs.get('a') and (x.get('done') and 'X ' or '') or '',
 		'index' : x.get('index', '?'),
 		'name' : x['name'],
 		'col' : kwargs.get('c') and (x.get('importance') is not None) and colors.get(x['importance']) or "",
-		'defcol' : default,
-		'prereqs' : prereqs,
+		'defcol' :  kwargs.get('c') and default or "",
+		'prereqs' : prereqs and ' ' + prereqs or '',
 		'tags' : tags,
-		'goals' : x.get('goals', '')
+		'goals' : x.get('goals') and ' ' + x['goals'] or '' 
 	}
-	print "%(col)s%(done)s %(index)s: %(name)s %(tags)s%(defcol)s %(prereqs)s %(goals)s" % fmt
+	print "%(col)s%(done)s%(index)s: %(name)s %(tags)s%(defcol)s%(prereqs)s%(goals)s" % fmt
 
 def add_prereq(*args, **kwargs):
 	item_id = int(args[0])
