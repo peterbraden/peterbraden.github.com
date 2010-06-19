@@ -154,7 +154,7 @@ $(function(){
 			var m = $('#' + MAP[parseInt(x + y*MAP_SIZE)]['terrain'])[0];
 			ctx.drawImage(
 				m,
-				c[0]-s/2, c[1] - s* m.height/m.width,
+				c[0] + s/3, c[1] - s* m.height/m.width,
 				s, s * m.height/m.width
 				);
 			//ctx.fillRect(c[0], c[1], 1, 1);	
