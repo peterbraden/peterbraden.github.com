@@ -11,7 +11,7 @@ def get_file(*args, **kwargs):
 		f = open(filename).read()
 		todo = json.loads(f)
 	except Exception,e:
-		print e
+		print >> sys.stderr, e
 		todo = {'0':[]}
 
 	return todo
@@ -19,7 +19,10 @@ def get_file(*args, **kwargs):
 def get_data(*args, **kwargs):
 	data = get_file(*args, **kwargs)['0']
 
-	data = sync_l(data, 'todoapp', '0')
+	try:
+		data = sync_l(data, 'todoapp', '0')
+	except Exception, e:
+			print e
 
 	data.sort(key = lambda x:x.get('importance', 4))
 	return data
