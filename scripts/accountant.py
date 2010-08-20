@@ -50,6 +50,8 @@ class Statement():
 		bisect.insort(ordered_objects, (self.key, self))
 		#accountant.add_statement(self)
 
+	def will_fire(*args, **kwargs):
+		return True
 
 class Account():
 	def __init__(self, id, name, *args, **kwargs):
@@ -73,17 +75,26 @@ class Transaction():
 		self.category = category
 		
 		if src not in accounts:
-			accounts[src] = Account(src, src)
+			accounts[src] = Account(src, src, currency = self.currency)
 		if dest not in accounts:
-			accounts[dest] = Account(dest, dest)	
+			accounts[dest] = Account(dest, dest, currency = self.currency)	
 		
 		self.source = accounts[src]
 		self.dest = accounts[dest]
+		
+		# Hack
+		if self.source.currency == '?':
+			self.source.currency = self.currency
+		
+		if self.dest.currency == '?':
+			self.dest.currency = self.currency
 		
 		self.key = '%s%s' % (self.date.strftime('%Y-%m-%d'), '0t')
 		bisect.insort(ordered_objects, (self.key, self))
 		#accountant.add_transaction(self)
 
+	def will_fire(*args, **kwargs):
+		return True
 
 	def __str__(self):
 		return "Transaction('%s', '%s', '%s', '%s', %s)" %(
@@ -110,7 +121,19 @@ class OtherCompaniesAccounts(object):#TODO! fix
 		for i in accounts:
 			Account(i,i)
 			Statement(i, '2005-10-01', '?', 0)
+
 ###====
+
+class ProjectedTransaction(Transaction):
+	def will_fire(*args, **kwargs):
+		return kwargs.get('projection')
+			
+
+###===
+
+
+
+
 
 class Report(object):
 
@@ -118,8 +141,13 @@ class Report(object):
 		self.account = account
 		self.owner = owner
 		self.category = category
+		self.args = args
+		self.kwargs = kwargs
 
 	def object_event(self, object):
+		if not object.will_fire(*self.args, **self.kwargs):
+			return
+			
 		if isinstance(object, Transaction):
 			if self.account and (object.source.id != self.account and object.dest.id != self.account):
 				return
@@ -284,7 +312,7 @@ class BalanceReport(Report):
 			dt = statement.date
 			
 			for i in self.recent_transactions[acct]:
-				if i.source == acct:
+				if i.source.id == acct:
 					balance -= i.amount
 				else:
 					balance += i.amount
@@ -313,25 +341,32 @@ class BalanceReport(Report):
 class NetWorthGraph(Report):
 
 	out = {}
-	
+	prev = {}
 	
 	def transaction_event(self, transaction):
-		import time
-		l = self.out.get(transaction.currency, [])
+		l = self.out.get(transaction.currency, {})
+		
+		k = transaction.date
 
-		w = l and l[len(l)-1][1] or 0
+		if l.get(k):
+			w = l[k]
+		else:
+			w = self.prev.get(transaction.currency, 0)
+		
 		
 		if transaction.source.owner in self.owner and transaction.dest.owner not in self.owner:
 			w -= transaction.amount
-		elif transaction.dest.owner in self.owner:
+
+		elif transaction.dest.owner in self.owner and transaction.source.owner not in self.owner:
 			w += transaction.amount
 		
-		
-		l.append((int(time.mktime(transaction.date.timetuple())),  w))
+		l[k] = w
+		self.prev[transaction.currency] = w
 		self.out[transaction.currency] = l
-
+		
 	def output(self):
-		return "\n".join(["%s, %s" % x for x in self.out["$"]])
+	
+		return "\n".join(sorted(["%s, %s" % x for x in self.out["$"].items()]))
 
 class IncomeOutgoingReport(Report):
 	incomings = {}
@@ -347,6 +382,9 @@ class IncomeOutgoingReport(Report):
 	def output(self):
 		out = ["-"*82, "| %s | %s | %s | %s |" %( 'Account'.center(25), 'Income'.center(15), 'Outgoing'.center(15), 'Balance'.center(15)), "-"*82]
 		for acct in list(set(self.incomings.keys()).union(set(self.outgoings.keys()))):
+			if accounts[acct].owner not in self.owner:
+				continue
+		
 			out.append('| %s | %s | %s | %s |' % (
 				accounts[acct].name[:25].ljust(25),
 				accounts[acct].currency + str(self.incomings.get(acct, '-')).ljust(14),
@@ -373,6 +411,7 @@ def run():
 	
 	parser.add_option('-a', '--account', action = 'append', dest = 'accounts', help = 'Limit output to specified account(s)')
 	parser.add_option('-o', '--owner', action = 'append', dest = 'owner', help = 'Limit output to specified owner(s)')
+	parser.add_option('-p', '--projection', action = 'store_true', dest = 'projection', help = '')
 	parser.add_option('-s', '--start_date', action = 'append', dest = 'start', help = 'Start reports after start date (YYYY-MM-DD)')
 	
 	rpts = []
@@ -403,12 +442,12 @@ def run():
 	
 
 
-	(options, args) = parser.parse_args()
+	(options, args) = parser.parse_args() 
 	for i in rpts:	
 		reports.append(
-			i(owner = options.owner,
-				accounts = options.accounts,
-				start_date = options.start and datetime.datetime.strptime(options.start[0], '%Y-%m-%d')
+			i(
+				start_date = options.start and datetime.datetime.strptime(options.start[0], '%Y-%m-%d'),
+				 **options.__dict__
 				)
 			)
 

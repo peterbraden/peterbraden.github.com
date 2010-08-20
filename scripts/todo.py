@@ -20,9 +20,11 @@ def get_data(*args, **kwargs):
 	data = get_file(*args, **kwargs)['0']
 
 	try:
-		data = sync_l(data, 'todoapp', '0')
-	except Exception, e:
-			print e
+		username = kwargs.get('user', '')
+		pwd = kwargs.get('pwd', '')
+		data = sync_l(data, 'http://%s:%s@peterbraden.couchone.com' % (username, pwd), 'todo', '0')
+	except KeyError, e:
+			print e.__class__.__name__, e.__class__, e
 
 	data.sort(key = lambda x:x.get('importance', 4))
 	return data
@@ -242,6 +244,8 @@ if __name__ == '__main__' :
 	parser.add_option('-a', action='store_true')
 	parser.add_option('-c', action='store_true')
 	parser.add_option('-g', action='store_true')
+	parser.add_option('--user', dest='user')
+	parser.add_option('--pwd', dest='pwd')
 	parser.add_option('-f')
 	(options, args) = parser.parse_args()
 

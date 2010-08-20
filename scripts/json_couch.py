@@ -1,18 +1,30 @@
+from decorators import memoized
 from couchdb import client
+from couchdb.http import ResourceNotFound
+import uuid
+
+@memoized
+def _server(url):
+	return client.Server(url)
+
 
 def get_doc_json(db, key, server = 'http://localhost:5984'):
-	s = client.Server(server)
+	s = _server(server)
 	try:
 		db = s[db]
-	except client.ResourceNotFound:
+	except ResourceNotFound:
 		db = s.create(db)
 	return dict(db.get(key, {}))
 	
 
 def put_doc_json(db, key, value, server = 'http://localhost:5984'):
-	s = client.Server(server)
-	db = s[db]
-	db[key] = value
+	s = _server(server)
+	try:
+		db = s[db]
+	except ResourceNotFound:
+		db = s.create(db)
+
+	db[str(key)] = value
 
 
 def magic_syncing(d1, d2):
@@ -46,18 +58,39 @@ def magic_syncing(d1, d2):
 	return d1
 
 
-def sync_l(l, db, k):
-	dbdoc0 = get_doc_json(db, k)
+def sync_l(l, serv, db, k):
+	dbdoc0 = get_doc_json(db, k, server=serv)
 	dbdoc = dbdoc0.get('content', {}) 
-
 	d = {}
 	for x in l:
 		d[str(x.get('index', 0))] = x
 
 	d2 = magic_syncing(d, dbdoc)	
-	
 	dbdoc0['content'] = d2
 
-	put_doc_json(db, k, dbdoc0)
+	put_doc_json(db, k, dbdoc0, server=serv)
 	return d2.values()
+
+
+def sync_list(l, serv, dbk):
+	try:
+		db = _server(serv)[dbk]
+	except ResourceNotFound:
+		db = _server(serv).create(dbk)
+
+	dbdocsl = db['_all_docs'].get('rows', [])
+	dbdocs = dict([(x['id'], db[x['id']]) for x in dbdocsl]) 
+
+	d = {}
+
+
+	for x in l:
+		if not x.get('index'):
+			x['index'] = uuid.uuid4() #Assign UUID
+		d[x['index']] = x
+	d2 = magic_syncing(d, dbdocs)
+	
+	for k,v in d2.items():
+		put_doc_json(dbk, k, v, server=serv)
+	return d2.values() 
 
