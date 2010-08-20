@@ -1,8 +1,23 @@
+"""
+Command line task management.
+
+
+$> todo ls
+ 1. Buy bacon
+ 2. Take over world
+ 
+$> todo do 1
+
+"""
+
 from optparse import OptionParser
 import json
 import sys
 import datetime
 from json_couch import sync_l
+import uuid
+
+
 
 def get_file(*args, **kwargs):
 	filename = kwargs.get('f', 'todo.json')
@@ -16,28 +31,56 @@ def get_file(*args, **kwargs):
 
 	return todo
 
+DATA = {}
+
 def get_data(*args, **kwargs):
+	'''
+	We support a number of storage's
+	> Flat json file
+	> CouchDB
+	
+	We'll sync on read
+	''' 
+	global DATA
+	if DATA:
+		return DATA
+
 	data = get_file(*args, **kwargs)['0']
 
 	try:
 		username = kwargs.get('user', '')
 		pwd = kwargs.get('pwd', '')
 		data = sync_l(data, 'http://%s:%s@peterbraden.couchone.com' % (username, pwd), 'todo', '0')
-	except KeyError, e:
+	except Exception, e:
 			print e.__class__.__name__, e.__class__, e
 
-	data.sort(key = lambda x:x.get('importance', 4))
-	return data
+	data.sort(key = lambda x:(x.get('importance', 4), x.get('index', '')))
+	DATA = data
+	return DATA
 
 def put_file(val, *args, **kwargs):
 	filename = kwargs.get('f', 'todo.json')
 	
 	f = open(filename, 'w')
-	data = json.dumps(val, indent=2)
+	data = json.dumps(val, indent=2, sort_keys=True)
 	f.write(data)
 
 def put_data(val, *args, **kwargs):
 	put_file({'0' : val}, *args, **kwargs)
+
+def find(seg, *args, **kwargs):
+	todo = get_data(*args, **kwargs)
+	o = None
+	for x in todo:
+		i = str(x.get('index', ''))
+		if i.startswith(seg):
+			if o:
+				print o
+				raise Exception, "Duplicate items by that ID"
+			o = i	
+	if o:
+		return o			
+	raise Exception, "Item not Found"			
 
 def get_item(item_id, *args, **kwargs):
 	todo = get_data(*args, **kwargs)
@@ -109,7 +152,7 @@ def parse_add(args):
 def add(*args, **kwargs):
 	obj = parse_add(args)
 	todo = get_data(*args, **kwargs)
-	index = reduce(max, [x.get('index', 0) for x in todo] or [0])+1
+	index = str(uuid.uuid4())
 	obj['index'] = index
 	print index
 	todo.append(obj)
@@ -143,7 +186,7 @@ def ls(*args, **kwargs):
 			
 			fmt = {
 				'done' : x.get('done') and 'X' or ' ',
-				'index' : x.get('index', '?'),
+				'index' : str(x.get('index', '?')) [:4],
 				'name' : x['name'],
 				'col' : kwargs.get('c') and (x.get('importance') is not None) and colors.get(x['importance']) or "",
 				'defcol' : default,
@@ -189,7 +232,7 @@ def curr(*args, **kwargs):
 	print "%(col)s%(done)s%(index)s: %(name)s %(tags)s%(defcol)s%(prereqs)s%(goals)s" % fmt
 
 def add_prereq(*args, **kwargs):
-	item_id = int(args[0])
+	item_id = find(args[0], *args, **kwargs)
 	item, save = get_item(item_id, *args, **kwargs)
 	item['prereq'] = list(set(item.get('prereq', []) + list(args[1:]))) 
 	
@@ -197,7 +240,7 @@ def add_prereq(*args, **kwargs):
 	
 			
 def tag(*args, **kwargs):
-	item_id = int(args[0])
+	item_id = find(args[0], *args, **kwargs)
 	item, save = get_item(item_id, *args, **kwargs)
 	item['tags'] = list(set(item.get('tags', []) + list(args[1:]))) 
 	
@@ -205,7 +248,7 @@ def tag(*args, **kwargs):
 
 
 def do_task(*args, **kwargs):
-	item_id = int(args[0])
+	item_id = find(args[0], *args, **kwargs)
 	item, save = get_item(item_id, *args, **kwargs)	
 	item['done'] = True
 	save()
@@ -213,14 +256,14 @@ def do_task(*args, **kwargs):
 
 
 def importance(*args, **kwargs):
-	item_id = int(args[0])
+	item_id = find(args[0], *args, **kwargs)
 	importance = int(args[1])
 	item, save = get_item(item_id, *args, **kwargs)
 	item['importance'] = importance
 	save()
 
 def remove(*args, **kwargs):
-	item_id = int(args[0])
+	item_id = find(args[0], *args, **kwargs)
 	item, save = get_item(item_id, *args, **kwargs)	
 	item['deleted'] = True
 	save()

@@ -1,47 +1,43 @@
 {
   "0": [
     {
-      "importance": 0, 
-      "index": 1, 
-      "name": "Test 4"
-    }, 
-    {
-      "importance": 0, 
-      "index": 2, 
-      "done": true, 
-      "name": "Test 5"
-    }, 
-    {
+      "index": "d25dfaf3-57fe-4cd6-bdba-d0e7c27f2a4a", 
+      "added": "2010-08-20 15:21:46.212541", 
+      "name": "Foobar4", 
+      "tags": [], 
       "importance": 1, 
-      "index": 6, 
-      "prereq": [
-        "1"
-      ], 
-      "name": "Foo"
+      "deleted": true
     }, 
     {
-      "importance": 2, 
-      "index": 5, 
+      "index": "5830e7c2-92c1-46ec-a507-ee0a82833a2e", 
+      "added": "2010-08-20 15:11:34.011046", 
       "done": true, 
-      "name": "Test 6"
+      "name": "Foobar", 
+      "tags": []
     }, 
     {
-      "name": "Test 3"
-    }, 
-    {
-      "index": 3, 
+      "index": "e27bc35c-1f18-45bb-a8fb-0c8e0308457d", 
+      "added": "2010-08-20 15:18:24.750305", 
       "done": true, 
-      "name": "Test 6"
+      "name": "foobar2", 
+      "tags": []
     }, 
     {
-      "index": 4, 
-      "done": true, 
-      "name": "Test 6"
+      "index": "a385b1bb-9d57-40c6-8ebb-f4c0931eb4f1", 
+      "added": "2010-08-20 15:21:43.108881", 
+      "name": "Foobar3", 
+      "tags": []
     }, 
     {
-      "index": 7, 
-      "added": "2010-04-24 15:26:26.429880", 
-      "name": "foo", 
+      "index": "0a60197f-9c04-4fa8-b4ae-16b2d0a6cbb4", 
+      "added": "2010-08-20 15:21:50.062303", 
+      "name": "Foobar5", 
+      "tags": []
+    }, 
+    {
+      "index": "afab2bfa-5c5b-4490-b345-77950ef8a082", 
+      "added": "2010-08-20 15:21:53.221505", 
+      "name": "Foobar6", 
       "tags": []
     }
   ]
