@@ -1,0 +1,105 @@
+<html> 
+	<head>
+		<script src = 'http://ajax.googleapis.com/ajax/libs/jquery/1.3.2/jquery.min.js'></script>
+		<script src = './plib.js'></script>
+		<style type = "text/css">
+body{padding:0; margin:0;}		
+		</style>
+		
+		<script type="text/javascript">
+
+$(function(){
+
+
+	var vec = plib.v2, 
+		screen = $("#particles")[0],
+		ctx = screen.getContext('2d'),
+		mousepos = [0,0],
+		
+		width = document.body.clientWidth,
+		height = document.body.clientHeight,
+		
+        x= y= 0,
+        p1 = -2.25,
+        p2 = 0.75,
+        q1 = -1.5,
+        q2 = 1.5,
+	
+        wd = (p2-p1)/width,
+        ht = (q2-q1)/height,
+        
+        max_cutoff = 100,
+        no_colors = 255;
+		
+	screen.width = width;
+	screen.height = height;
+
+	
+	
+	
+	
+	var toColor = function(i){
+	    if (i%2 ==0){
+			return "#fff"
+        }
+        else{
+			return "#000"	
+		}
+    }		
+	
+	var mcol = function(x, y){
+		var p = x * wd + p1,
+            q= y * ht +q1,
+    		prev_i = prev_r = 0;
+    		
+        for (var n =0; n < no_colors; n++){   		
+        		var r = prev_r * prev_r - prev_i * prev_i +p
+        		var i = 2 * prev_r * prev_i +q;
+        		if ((r*r + i*i) < max_cutoff){
+					prev_r = r
+					prev_i = i
+				}	
+        		else{
+					return n
+				}	
+        }
+		return n;
+	}
+	
+	
+	//Background
+	ctx.fillStyle = "#555";
+	ctx.fillRect (0, 0, screen.width, screen.height);
+	ctx.strokeStyle = "#000";
+    
+    ctx.fillStyle = "#fff";
+	ctx.font = "bold 12px sans-serif"
+	ctx.fillText("Mandelbrot is slow, please be patient", width/2, height/2);
+	
+
+	
+	var loop = function(){
+	   for (var chunk=0; chunk <100; chunk++){
+    	   ctx.fillStyle = toColor(mcol(x,y));
+    	   ctx.fillRect (x,screen.height-y,1,1);
+    	   if (x >=width){
+    	       continue;
+    	   }
+    	   if (y >= height){
+    	       x+=1;
+    	       y=0;
+    	       continue;
+    	   }  
+    	   y++;
+        } 	     
+	}
+
+	setInterval(loop, 2);
+});
+		</script>
+
+	</head>
+	<body>
+		<canvas width = '100' height='100' id = 'particles' ></canvas>
+	</body>
+</html> 	
