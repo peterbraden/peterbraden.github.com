@@ -96,7 +96,7 @@ $(function(){
 	}
 
 	var q = setInterval(loop, 2);
-	$('#particles').css('cursor','crosshair').click(function(e){
+	$('#particles').css('cursor','crosshair').click(function(event){
         clearInterval(q);
         ctx.fillStyle = "#555";
 	    ctx.fillRect (0, 0, screen.width, screen.height);
