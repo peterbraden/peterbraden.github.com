@@ -39,6 +39,7 @@ $(function(){
 	
 	
 	var toColor = function(i){
+	    return "hsl(20,100%,"+ (i)%100 + "%)";
 	    if (i%2 ==0){
 			return "#fff"
         }
@@ -79,7 +80,7 @@ $(function(){
 
 	
 	var loop = function(){
-	   for (var chunk=0; chunk <100; chunk++){
+	   for (var chunk=0; chunk <500; chunk++){
     	   ctx.fillStyle = toColor(mcol(x,y));
     	   ctx.fillRect (x,screen.height-y,1,1);
     	   if (x >=width){
@@ -94,7 +95,32 @@ $(function(){
         } 	     
 	}
 
-	setInterval(loop, 2);
+	var q = setInterval(loop, 2);
+	$('#particles').css('cursor','crosshair').click(function(e){
+        clearInterval(q);
+        ctx.fillStyle = "#555";
+	    ctx.fillRect (0, 0, screen.width, screen.height);
+	    ctx.strokeStyle = "#000";
+        
+        mousepos = [event.pageX, screen.height - event.pageY];
+        mcoor = [mousepos[0] * wd + p1, mousepos[1] * ht +q1]
+        p1 = mcoor[0] - wd/8*width,
+        p2 = mcoor[0] + wd/8*width,
+        q1 = mcoor[1] - ht/8*height,
+        q2 = mcoor[1] + ht/8*height,
+	
+	    //max_cutoff =max_cutoff /2,
+	    
+        wd = (p2-p1)/width,
+        ht = (q2-q1)/height;
+        
+        console.log("!", wd, ht, mousepos, mcoor, p1, p2, q1, q2)
+        
+        
+        x=0;
+        y=0;
+        q = setInterval(loop, 2);
+	});	
 });
 		</script>
 
