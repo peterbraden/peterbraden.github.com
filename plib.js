@@ -115,5 +115,34 @@ plib = function(plib){
 	plib.randomShuffle = function(list){
 	 	list.sort(function(a,b){return (Math.random()>0.5) ? 1 : -1});
 	 }
-	 return plib
+	 
+	 
+    /********
+	 * Geometry
+	 ******/ 
+	plib.geom = {}; 
+	plib.geom.circle = function(center, radius){
+	   return {
+	       center : center,
+	       radius : radius,
+	       intersects : function(pt){
+	           return (plib.v2.len(plib.v2.sub(pt, this.center)) < this.radius)
+	       }
+	        
+	   }
+	} 
+	 
+	/********
+	 * Drawing
+	 ******/ 
+    plib.draw = {}
+    plib.draw.fillcircle = function(ctx, circle){
+    	ctx.fillStyle = circle.color;
+    	ctx.beginPath(); 
+        ctx.arc(circle.center[0],circle.center[1], circle.radius,0,Math.PI*2,true);
+        ctx.fill(); 
+    }
+
+	 
+    return plib
 }(plib);
