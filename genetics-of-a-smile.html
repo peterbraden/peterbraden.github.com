@@ -17,7 +17,7 @@ smile.randomEllipse = function(){
 }
 
 smile.randomColor = function(){
-    return 'hsl(' + Math.random()*256 + ',100%,50%)';
+    return 'hsla(' + Math.random()*256 + ',' + parseInt(Math.random()*100) + '%,' + parseInt(Math.random() * 50 + 20) + '%, ' + Math.random() + ')';
 }
 
 
@@ -33,10 +33,12 @@ smile.strain = function(dna){
             
         var canv_data = ctx.getImageData(0,0,canv.width, canv.height).data;
         var diff = 0;
-        for (var i in canv_data){
-            var x = canv_data[i];
-            var y = comp_data[i] || 0;
-            diff += (x - y) * (x - y)
+        for (var i = 0; i<canv_data.length/4; i++){
+            var r = canv_data[i*4] - comp_data[i*4],
+                g = canv_data[i*4 + 1] - comp_data[i*4 + 1],
+                b = canv_data[i*4 +2] - comp_data[i*4 +2];
+            
+            diff += r*r + g*g + b*b;
         } 
         s._fitness = diff
         return diff;
@@ -88,7 +90,7 @@ $(function(){
     $("#lisa").load(function(){
     
     
-    var GENERATION_POPULATION = 3,
+    var GENERATION_POPULATION = 10,
         petri = [],
         $strains = $("#strains"),
         lisa = $("#lisa")[0],
@@ -96,7 +98,8 @@ $(function(){
         generation = 0;
         
     
-
+    lisa.width=50;
+    lisa.height = 100;
 	lisacanv.width = lisa.width;
 	lisacanv.height = lisa.height;
     var hcc = lisacanv.getContext('2d');
@@ -105,7 +108,6 @@ $(function(){
     $("#lisacanv").remove();
     $("#lisa").remove();
     /* I hate the crappy security rules in canvas, and the lack of getImageData on images */
-    //var comp_data = [];
     	
     plib.forRange(function(i){
         $strains.append("<div class='strain strain"+i+"'><canvas id = 'strain" 
@@ -146,7 +148,7 @@ $(function(){
            
         generation ++;
         $("#generation").text(generation)
-        setTimeout(evolve, 1000);
+        setTimeout(evolve, 100);
     }
     
     evolve();
