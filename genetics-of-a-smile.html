@@ -101,7 +101,7 @@ $(function(){
 	lisacanv.height = lisa.height;
     var hcc = lisacanv.getContext('2d');
 	hcc.drawImage(lisa, 0, 0, lisa.width, lisa.height);
-	var comp_data = hcc.getImageData(0,0,lisa.width, lisa.height);
+	var comp_data = hcc.getImageData(0,0,lisa.width, lisa.height).data;
     $("#lisacanv").remove();
     $("#lisa").remove();
     /* I hate the crappy security rules in canvas, and the lack of getImageData on images */
