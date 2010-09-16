@@ -27,15 +27,16 @@ smile.strain = function(dna){
     s.id = Math.random();
     s.dna = dna;
     
-    s.fitness = function(canv, comp_data){
+    s.fitness = function(canv, ctx, comp_data){
         if (s._fitness)
             return s._fitness
             
-        var canv_data = canv.getContext('2d').getImageData(0,0,canv.width, canv.height);
+        var canv_data = ctx.getImageData(0,0,canv.width, canv.height).data;
         var diff = 0;
         for (var i in canv_data){
-            diff += (comp_data - canv_data) * (comp_data - canv_data)
-        
+            var x = canv_data[i];
+            var y = comp_data[i] || 0;
+            diff += (x - y) * (x - y)
         } 
         s._fitness = diff
         return diff;
@@ -104,9 +105,10 @@ $(function(){
     $("#lisacanv").remove();
     $("#lisa").remove();
     /* I hate the crappy security rules in canvas, and the lack of getImageData on images */
+    //var comp_data = [];
     	
     plib.forRange(function(i){
-        $strains.append("<div class='strain'><canvas id = 'strain" 
+        $strains.append("<div class='strain strain"+i+"'><canvas id = 'strain" 
             + i + "' width='" + lisa.width + "' height='"
             + lisa.height + "'></canvas><p></p></div>");
         
@@ -126,8 +128,8 @@ $(function(){
 	        ctx.fillRect (0, 0, canv.width, canv.height);
             
             petri[i].draw(ctx, canv.width, canv.height);
-            var fitness = petri[i].fitness(canv, comp_data);
-            $("#strain" + i).find('p').text(fitness); 
+            var fitness = petri[i].fitness(canv, ctx, comp_data);
+            $(".strain" + i).find('p').text(fitness);
         }    
         
         petri = petri.sort(function(x, y){
@@ -137,7 +139,6 @@ $(function(){
         for(var i =1; i<petri.length; i++){
             petri[i] = smile.strain(petri[0].dna.slice(0));
             petri[i].mutate();
-            console.log(i, petri[i].dna);
         }
         
 
@@ -145,7 +146,7 @@ $(function(){
            
         generation ++;
         $("#generation").text(generation)
-        setTimeout(evolve, 2000);
+        setTimeout(evolve, 1000);
     }
     
     evolve();
