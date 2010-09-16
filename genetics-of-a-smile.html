@@ -40,6 +40,7 @@ smile.strain = function(dna){
             
             diff += r*r + g*g + b*b;
         } 
+        diff = diff + (s.dna.length * diff/100)
         s._fitness = diff
         return diff;
     }
@@ -65,11 +66,12 @@ smile.strain = function(dna){
                 'color': smile.randomColor()})
         }else{
             if (s.dna.length >0){
-                s.dna.pop();
+                s.dna.splice(parseInt(Math.random()*s.dna.length), 1);
             }
        }     
     
-    
+        if (Math.random() > 0.9)
+            s.mutate();
     }
     
     s.breed = function(s2){}
@@ -90,7 +92,7 @@ $(function(){
     $("#lisa").load(function(){
     
     
-    var GENERATION_POPULATION = 10,
+    var GENERATION_POPULATION = 20,
         petri = [],
         $strains = $("#strains"),
         lisa = $("#lisa")[0],
@@ -98,8 +100,6 @@ $(function(){
         generation = 0;
         
     
-    lisa.width=50;
-    lisa.height = 100;
 	lisacanv.width = lisa.width;
 	lisacanv.height = lisa.height;
     var hcc = lisacanv.getContext('2d');
@@ -131,7 +131,7 @@ $(function(){
             
             petri[i].draw(ctx, canv.width, canv.height);
             var fitness = petri[i].fitness(canv, ctx, comp_data);
-            $(".strain" + i).find('p').text(fitness);
+            $(".strain" + i).find('p').text(fitness + "," + petri[i].dna.length);
         }    
         
         petri = petri.sort(function(x, y){
