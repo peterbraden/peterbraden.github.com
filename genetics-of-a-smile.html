@@ -101,8 +101,10 @@ $(function(){
     var hcc = lisacanv.getContext('2d');
 	hcc.drawImage(lisa, 0, 0, lisa.width, lisa.height);
 	var comp_data = hcc.getImageData(0,0,lisa.width, lisa.height);
-	//comp_data = [];
-	
+    $("#lisacanv").remove();
+    $("#lisa").remove();
+    /* I hate the crappy security rules in canvas, and the lack of getImageData on images */
+    	
     plib.forRange(function(i){
         $strains.append("<div class='strain'><canvas id = 'strain" 
             + i + "' width='" + lisa.width + "' height='"
