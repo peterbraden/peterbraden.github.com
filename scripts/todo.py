@@ -84,7 +84,7 @@ def find(seg, *args, **kwargs):
 
 def get_item(item_id, *args, **kwargs):
 	todo = get_data(*args, **kwargs)
-	item = [i for i in todo if i.get('index') == item_id]
+	item = [i for i in todo if str(i.get('index')) == item_id]
 	
 	def save():
 		put_data(todo, *args, **kwargs)

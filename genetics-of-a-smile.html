@@ -85,11 +85,6 @@ smile.randomStrain = function(){
 
 $(function(){
     $("#lisa").load(function(){
-
-
-    
-    
-    
     
     
     var GENERATION_POPULATION = 3,
@@ -111,7 +106,7 @@ $(function(){
     plib.forRange(function(i){
         $strains.append("<div class='strain'><canvas id = 'strain" 
             + i + "' width='" + lisa.width + "' height='"
-            + lisa.height + "'></canvas></div>");
+            + lisa.height + "'></canvas><p></p></div>");
         
         petri.push(smile.randomStrain());
     
@@ -124,12 +119,13 @@ $(function(){
         for (var i =0; i<petri.length; i++){
             var canv = $("#strain" + i)[0],
                 ctx = canv.getContext('2d');
+            
             ctx.fillStyle = "#555";
 	        ctx.fillRect (0, 0, canv.width, canv.height);
             
             petri[i].draw(ctx, canv.width, canv.height);
-            petri[i].fitness(canv, comp_data);
-            
+            var fitness = petri[i].fitness(canv, comp_data);
+            $("#strain" + i).find('p').text(fitness); 
         }    
         
         petri = petri.sort(function(x, y){
