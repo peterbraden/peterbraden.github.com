@@ -1,0 +1,142 @@
+<html>
+	<head>
+		<title>Life: Simulation</title>
+		<script src = './lib/jquery.js'
+		></script>
+		<script src = './plib.js'></script>
+		<script>
+var sim = {
+	
+    hexVal : function(px){
+	  var r = px[0].toString(16)
+	    , g = px[1].toString(16)
+	    , b = px[2].toString(16)
+      return '#' + r + g + b	
+    }
+
+  , extractNeighbors : function(cells, i, width){
+	  var out = []
+	    , x = i % width
+	    , y = parseInt(i / width)
+        , cl = cells.length
+		, height = cl/width
+
+	  //top row
+	  out.push(cells[( (y>0)? y-1 : height - 1 )*width + ( (x-1 >=0) ? x-1 : width-1 )])
+	  out.push(cells[( (y>0)? y-1 : height - 1 )*width + (x)])
+	  out.push(cells[( (y>0)? y-1 : height - 1 )*width + ( (x<width-1)? x+1 : 0 )])
+	  //left, right
+	  out.push(cells[(y)*width + ((x-1 >=0) ? x-1 : width-1)])
+	  out.push(cells[(y)*width + ((x<width-1)? x+1 : 0 )])
+  	  // bottom row
+	  out.push(cells[( (y<height-1)? y+1 : 0 )*width + ((x-1 >=0) ? x-1 : width-1 )])
+	  out.push(cells[( (y<height-1)? y+1 : 0 )*width + (x)])
+	  out.push(cells[( (y<height-1)? y+1 : 0 )*width + ((x<width-1)? x+1 : 0 )])
+	  return out
+    }	
+
+  ,	extractColorVals : function(canvCtx, width, height, cellSize){
+	  var out = []
+	  for (var i = 0; i< height; i+=cellSize){
+	    for (var j = 0; j < width; j+=cellSize){
+		  out.push(sim.hexVal(canvCtx.getImageData(j,i,1,1).data))
+	    }	
+	  }	
+	  return out
+	}	
+
+  , paintVals : function(canvCtx, width, height, cellSize, vals){
+	  for (var i = 0; i< height/cellSize; i++){
+	    for (var j = 0; j < width/cellSize; j++){
+		  if (vals.length >= i*(width/cellSize) + j){
+		    canvCtx.fillStyle = vals[i*(width/cellSize) + j]
+		    canvCtx.fillRect(j*cellSize, i*cellSize, cellSize, cellSize);
+		  }	
+	    }	
+	  }  	
+    }	
+
+  ,	create: function($dom, opts){
+		var ctx = $dom[0].getContext('2d')
+		  , timeout = undefined;
+		
+		
+		//initial fill black
+		ctx.fillStyle = "#000000";
+		ctx.fillRect (0, 0, $dom.width(), $dom.height());
+		
+		sim.paintVals(ctx, $dom.width(), $dom.height(), opts.cellSize, opts.initial)
+		
+		var turn = function(){
+		  var res = []
+		    , cells = sim.extractColorVals(ctx, $dom.width(), $dom.height(), opts.cellSize)
+		  
+		  $.each(opts.organisms, function(){
+		    for (var i = 0, ii = cells.length; i< ii; i++){
+		      var neighbors = sim.extractNeighbors(cells, i, $dom.width()/opts.cellSize)
+		      res.push(this.turn(cells[i], neighbors))// pass in neighbors
+		    }	
+	      })
+		  sim.paintVals(ctx, $dom.width(), $dom.height(), opts.cellSize, res)
+		  timeout = setTimeout(turn, 500);
+		}
+		
+		
+		// Start/stop button
+		$dom.after($('<a href="#">Start</a>').click(function(){
+			if($(this).text() === 'Start'){
+				$(this).text('Stop');
+				turn();
+			} else {
+				$(this).text('Start')
+				if (timeout)
+				  clearTimeout(timeout);
+				timeout = false;
+			}
+			
+		}));
+		
+	}
+}		
+		
+		</script>
+	</head>
+	<body>
+		<h1>Life: Simulated</h1>
+
+<h2>Conway's Game of Life</h2>
+<canvas id = 'conway' width='300' height='200'></canvas>
+
+<script type='text/javascript'>
+sim.create($('#conway'), {
+	organisms : [{
+		  name:'cell'
+		, turn:function(cell, neighbors){
+			var x = 0;
+			$.each(neighbors, function(){if (this=='#ffffff') x++ })
+			
+			if (cell == "#ffffff") //alive
+				return (x>=2 && x<=3) ? "#ffffff" : "#000000" 
+			
+			return x == 3 ? "#ffffff" : "#000000" // dead
+			}
+		}]
+  , cellSize: 10
+  , init : function(cell){
+    return (cell == '#fff') ? '#000' : '#fff';
+  }
+  , initial : ["#ffffff", "#ffffff", "#ffffff", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#ffffff", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#ffffff"]
+	
+})	
+
+
+
+</script>
+
+
+
+
+		
+		
+	</body>	
+</html>	
