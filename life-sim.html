@@ -6,11 +6,19 @@
 		<script src = './plib.js'></script>
 		<script>
 var sim = {
+	dec2hex : function (i){
+	  var result = "0000";
+	  if      (i >= 0    && i <= 15)    { result = "000" + i.toString(16); }
+	  else if (i >= 16   && i <= 255)   { result = "00"  + i.toString(16); }
+	  else if (i >= 256  && i <= 4095)  { result = "0"   + i.toString(16); }
+	  else if (i >= 4096 && i <= 65535) { result =         i.toString(16); }
+	  return result
+	}
 	
-    hexVal : function(px){
-	  var r = px[0].toString(16)
-	    , g = px[1].toString(16)
-	    , b = px[2].toString(16)
+    , hexVal : function(px){
+	  var r = sim.dec2hex(px[0])
+	    , g = sim.dec2hex(px[1])
+	    , b = sim.dec2hex(px[2])
       return '#' + r + g + b	
     }
 
@@ -48,7 +56,7 @@ var sim = {
   , paintVals : function(canvCtx, width, height, cellSize, vals){
 	  for (var i = 0; i< height/cellSize; i++){
 	    for (var j = 0; j < width/cellSize; j++){
-		  if (vals.length >= i*(width/cellSize) + j){
+		  if (vals.length > i*(width/cellSize) + j){
 		    canvCtx.fillStyle = vals[i*(width/cellSize) + j]
 		    canvCtx.fillRect(j*cellSize, i*cellSize, cellSize, cellSize);
 		  }	
@@ -68,13 +76,14 @@ var sim = {
 		sim.paintVals(ctx, $dom.width(), $dom.height(), opts.cellSize, opts.initial)
 		
 		var turn = function(){
-		  var res = []
-		    , cells = sim.extractColorVals(ctx, $dom.width(), $dom.height(), opts.cellSize)
-		  
+		  var cells = sim.extractColorVals(ctx, $dom.width(), $dom.height(), opts.cellSize)  
+		    , res = cells.slice(0)
 		  $.each(opts.organisms, function(){
 		    for (var i = 0, ii = cells.length; i< ii; i++){
-		      var neighbors = sim.extractNeighbors(cells, i, $dom.width()/opts.cellSize)
-		      res.push(this.turn(cells[i], neighbors))// pass in neighbors
+		      if (this.type(cells[i])){
+		        var neighbors = sim.extractNeighbors(cells, i, $dom.width()/opts.cellSize)
+		        res[i] = this.turn(cells[i], neighbors)// pass in neighbors
+		      }
 		    }	
 	      })
 		  sim.paintVals(ctx, $dom.width(), $dom.height(), opts.cellSize, res)
@@ -93,7 +102,7 @@ var sim = {
 				  clearTimeout(timeout);
 				timeout = false;
 			}
-			
+			return false;
 		}));
 		
 	}
@@ -111,6 +120,7 @@ var sim = {
 sim.create($('#conway'), {
 	organisms : [{
 		  name:'cell'
+		, type : function(){ return true;} // all sqares are cells
 		, turn:function(cell, neighbors){
 			var x = 0;
 			$.each(neighbors, function(){if (this=='#ffffff') x++ })
@@ -125,14 +135,38 @@ sim.create($('#conway'), {
   , init : function(cell){
     return (cell == '#fff') ? '#000' : '#fff';
   }
-  , initial : ["#ffffff", "#ffffff", "#ffffff", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#ffffff", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#ffffff", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000"]
-	
+  , initial : ["#ffffff", "#ffffff", "#ffffff", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#ffffff", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#ffffff", "#000000"]
 })	
-
-
 
 </script>
 
+
+<h2>Happy Green Planet</h2>
+<canvas id = 'hgp' width='600' height='300'></canvas>
+
+<script type='text/javascript'>
+sim.create($('#hgp'), {
+	organisms : [{
+		  name:'plant'
+		, type : function(x){
+		  // Plants are green
+		    if (x == '#00ff00' || x == '#009900')
+		      return true;
+		  }
+		, turn:function(cell, neighbors){
+			console.log(cell, neighbors);
+			if (neighbors[1] == "#00ff00"){ // Seed is above
+				return "#00ff00"
+			} 
+			return "#000000" // dead
+			
+			}
+		}]
+  , cellSize: 100
+  , initial : ["#000000", "#00ff00", "#000000", "#000000", "#000000", "#000000", "#000000", "#00ff00"]
+})	
+
+</script>
 
 
 
