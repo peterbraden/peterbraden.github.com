@@ -7,11 +7,9 @@
 		<script>
 var sim = {
 	dec2hex : function (i){
-	  var result = "0000";
-	  if      (i >= 0    && i <= 15)    { result = "000" + i.toString(16); }
-	  else if (i >= 16   && i <= 255)   { result = "00"  + i.toString(16); }
-	  else if (i >= 256  && i <= 4095)  { result = "0"   + i.toString(16); }
-	  else if (i >= 4096 && i <= 65535) { result =         i.toString(16); }
+	  var result = "00";
+	  if      (i >= 0    && i <= 15)    { result = "0" + i.toString(16); }
+	  else if (i >= 16   && i <= 255)   { result = i.toString(16); }
 	  return result
 	}
 	
@@ -83,6 +81,7 @@ var sim = {
 		      if (this.type(cells[i])){
 		        var neighbors = sim.extractNeighbors(cells, i, $dom.width()/opts.cellSize)
 		        res[i] = this.turn(cells[i], neighbors)// pass in neighbors
+				console.log(i, cells[i], res[i])
 		      }
 		    }	
 	      })

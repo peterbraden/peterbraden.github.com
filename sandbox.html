@@ -1,0 +1,120 @@
+<html>
+	<head>
+		<title>Sandbox</title>
+		<style>
+			body {background-color:#000; color:#fff; padding:0; margin:0;}
+			#canv {width:50%; float:left;}
+			#code {width:50%; float:left;}
+      textarea {width:100%; height:75%; color:#eee; background-color:#333;}
+      canvas {width:100%; height:100%; border:1px solid #555; margin:0;}
+      #tb{height:25%; color:#f00}
+	    .syntax-error{background-color:#553}
+	    .error{background-color:#533}
+	
+		</style>	
+		<script src = 'https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js'></script>
+		
+	</head>
+	<body>
+		<div id = "canv">
+		  <canvas id = "screen">
+		  </canvas>  
+		</div>
+		<div id = "code">
+		  <textarea id = "code-pad">
+var i =0, j = 0;
+setInterval(function(){
+  ctx.fillStyle = "hsl(" + i%256 + ", 100%, 50%)"
+  ctx.fillRect(i,j, width-i, height-j)
+  i++
+  j++
+}, 10)
+		  </textarea>  
+		  <pre id = 'tb'>
+		  </pre>  
+		</div>	
+
+
+		<script>
+$(function(){
+  var code = $("#code-pad").focus()
+    , pane = $("#canv")
+    , screen = $("#screen").attr('width', pane.width()).attr('height', pane.height())
+    , ctx = screen[0].getContext('2d')
+    , width = screen[0].width
+    , height = screen[0].height
+    
+    
+    // "internal" variables
+    var _setInterval = window.setInterval
+      , _intervalHandlers = []
+      , _setTimeout = window.setTimeout
+      , _timeoutHandlers = []
+      , _prev = ""
+      
+    setInterval = function(f, t){
+      var h = _setInterval(f, t);
+      _intervalHandlers.push(h)
+      return h
+    }  
+    
+    setTimeout = function(f, t){
+      var h = _setTimeout(f, t);
+      _timeoutHandlers.push(h)
+      return h
+    }
+    
+    
+    code.bind('keyup', function(){
+      var _val = code.val();
+      if (_val == _prev)
+        return;
+      _prev = _val;
+      
+      try {
+        console.log(width, height);
+        
+        for (var _i = 0; _i< _intervalHandlers.length; _i++){
+          clearInterval(_intervalHandlers[_i]);
+        }  
+        for (var _i = 0; _i< _timeoutHandlers.length; _i++){
+          clearTimeout(_timeoutHandlers[_i]);
+        }
+        
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0,0, width, height)
+        eval(_val)
+        $("#tb").text('');
+        code.removeClass('error').removeClass('syntax-error');
+      } catch(e){
+        $("#tb").text(e + '');
+        if (e.stack && e.stack.indexOf('SyntaxError') == 0){
+          code.addClass('syntax-error')
+        } else { 
+          code.addClass('error')
+        }  
+      }   
+      
+      
+    }).keyup()    
+})		
+
+
+/*
+
+// Mondrian
+var i =0, j = 0;
+setInterval(function(){
+  ctx.fillStyle = "hsl(" + Math.random()*256 + ", 100%, 50%)"
+  ctx.fillRect(i%width,j%height, (width-2*i)%width, (height-2*j)%height)
+  i++
+  j++
+}, 10)
+
+
+*/
+		</script>	
+	</body>
+</html>	
+
+
