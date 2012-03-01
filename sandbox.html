@@ -5,7 +5,7 @@
 			body {background-color:#000; color:#fff; padding:0; margin:0;}
 			#canv {width:50%; float:left;}
 			#code {width:50%; float:left;}
-      textarea {width:100%; height:75%; color:#eee; background-color:#333;}
+      textarea {width:100%; height:75%; color:#eee; background-color:#333; font-family:monaco,monospace;}
       canvas {width:100%; height:100%; border:1px solid #555; margin:0;}
       #tb{height:25%; color:#f00}
 	    .syntax-error{background-color:#553}
@@ -36,6 +36,72 @@ setInterval(function(){
 
 
 		<script>
+// Base 64 Encoding
+if (typeof btoa == 'undefined') {
+    function btoa(str) {
+        var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+        var encoded = [];
+        var c = 0;
+        while (c < str.length) {
+            var b0 = str.charCodeAt(c++);
+            var b1 = str.charCodeAt(c++);
+            var b2 = str.charCodeAt(c++);
+            var buf = (b0 << 16) + ((b1 || 0) << 8) + (b2 || 0);
+            var i0 = (buf & (63 << 18)) >> 18;
+            var i1 = (buf & (63 << 12)) >> 12;
+            var i2 = isNaN(b1) ? 64 : (buf & (63 << 6)) >> 6;
+            var i3 = isNaN(b2) ? 64 : (buf & 63);
+            encoded[encoded.length] = chars.charAt(i0);
+            encoded[encoded.length] = chars.charAt(i1);
+            encoded[encoded.length] = chars.charAt(i2);
+            encoded[encoded.length] = chars.charAt(i3);
+        }
+        return encoded.join('');
+    }
+}
+
+if (typeof atob == 'undefined') {
+    function atob(str) {
+        var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+        var invalid = {
+            strlen: (str.length % 4 != 0),
+            chars:  new RegExp('[^' + chars + ']').test(str),
+            equals: (/=/.test(str) && (/=[^=]/.test(str) || /={3}/.test(str)))
+        };
+        if (invalid.strlen || invalid.chars || invalid.equals)
+            throw new Error('Invalid base64 data');
+        var decoded = [];
+        var c = 0;
+        while (c < str.length) {
+            var i0 = chars.indexOf(str.charAt(c++));
+            var i1 = chars.indexOf(str.charAt(c++));
+            var i2 = chars.indexOf(str.charAt(c++));
+            var i3 = chars.indexOf(str.charAt(c++));
+            var buf = (i0 << 18) + (i1 << 12) + ((i2 & 63) << 6) + (i3 & 63);
+            var b0 = (buf & (255 << 16)) >> 16;
+            var b1 = (i2 == 64) ? -1 : (buf & (255 << 8)) >> 8;
+            var b2 = (i3 == 64) ? -1 : (buf & 255);
+            decoded[decoded.length] = String.fromCharCode(b0);
+            if (b1 >= 0) decoded[decoded.length] = String.fromCharCode(b1);
+            if (b2 >= 0) decoded[decoded.length] = String.fromCharCode(b2);
+        }
+        return decoded.join('');
+    }
+}		
+
+function b64encode(str){
+    return window.btoa(unescape(encodeURIComponent(str)));
+}
+
+function b64decode(str){
+    console.log(str);
+    return decodeURIComponent(escape(window.atob(str)));
+}
+
+// --		
+
+
+		
 $(function(){
   var code = $("#code-pad").focus()
     , pane = $("#canv")
@@ -44,13 +110,24 @@ $(function(){
     , width = screen[0].width
     , height = screen[0].height
     
-    
     // "internal" variables
     var _setInterval = window.setInterval
       , _intervalHandlers = []
       , _setTimeout = window.setTimeout
       , _timeoutHandlers = []
       , _prev = ""
+    
+      , _hashchange = function(){
+        console.log("!!!")
+        
+        var _val = b64decode(window.location.hash.slice(1) || '')
+        if (code.val != _val)
+          code.val(_val);
+        }  
+      
+    window.onhashchange = _hashchange;
+    _hashchange();  
+      
       
     setInterval = function(f, t){
       var h = _setInterval(f, t);
@@ -86,6 +163,8 @@ $(function(){
         eval(_val)
         $("#tb").text('');
         code.removeClass('error').removeClass('syntax-error');
+        window.location.hash = b64encode(_val);
+        
       } catch(e){
         $("#tb").text(e + '');
         if (e.stack && e.stack.indexOf('SyntaxError') == 0){
@@ -111,6 +190,89 @@ setInterval(function(){
   j++
 }, 10)
 
+
+// Chaos Fern
+var x = Math.random()
+   , y = Math.random()
+
+setInterval(function(){
+  var rand = Math.random()
+  var newx, newy
+
+  if (rand < 0.01){
+    newx = 0, newy = 0.16 * y
+  } else if (rand < 0.86) {
+    newx = (0.85 * x) + (0.04 * y)
+    newy = (-0.04 * x) + (0.85 * y) + 1.6
+  } else if (rand < 0.93){
+    newx = (0.2 * x) - (0.26 * y)
+    newy = (0.23 * x) + (0.22 * y) + 1.6
+  } else {
+    newx = (-0.15 * x) + (0.28 * y)
+    newy = (0.26 * x) + (0.24 * y) + 0.44		
+  }
+  x = newx
+  y = newy
+  ctx.fillStyle ="#0f0"
+  ctx.fillRect(width/2 + x*width/10,y*height/12,1,1);
+}, 10)
+
+
+//2 color fern
+
+(function(){
+var x = Math.random()
+   , y = Math.random()
+
+setInterval(function(){
+  var rand = Math.random()
+  var newx, newy
+
+  if (rand < 0.01){
+    newx = 0, newy = 0.16 * y
+  } else if (rand < 0.86) {
+    newx = (0.85 * x) + (0.04 * y)
+    newy = (-0.04 * x) + (0.85 * y) + 1.6
+  } else if (rand < 0.93){
+    newx = (0.2 * x) - (0.26 * y)
+    newy = (0.23 * x) + (0.22 * y) + 1.6
+  } else {
+    newx = (-0.15 * x) + (0.28 * y)
+    newy = (0.26 * x) + (0.24 * y) + 0.44		
+  }
+  x = newx
+  y = newy
+  ctx.fillStyle ="#0f0"
+  ctx.fillRect(width/2 + x*width/10,y*height/12,1,1);
+}, 1)
+})();
+
+(function(){
+var x = Math.random()
+   , y = Math.random()
+
+setInterval(function(){
+  var rand = Math.random()
+  var newx, newy
+
+  if (rand < 0.1){
+    newx = 0, newy = 0.16 * y
+  } else if (rand < 0.86) {
+    newx = (0.85 * x) + (0.04 * y)
+    newy = (-0.04 * x) + (0.85 * y) + 1.6
+  } else if (rand < 0.93){
+    newx = (0.2 * x) - (0.26 * y)
+    newy = (0.23 * x) + (0.22 * y) + 1.6
+  } else {
+    newx = (-0.15 * x) + (0.28 * y)
+    newy = (0.26 * x) + (0.24 * y) + 0.44		
+  }
+  x = newx
+  y = newy
+  ctx.fillStyle ="#f00"
+  ctx.fillRect(width/2 + x*width/10,y*height/12,1,1);
+}, 1)
+})()
 
 */
 		</script>	
