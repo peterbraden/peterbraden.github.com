@@ -13,6 +13,8 @@
 	
 		</style>	
 		<script src = 'https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js'></script>
+		<script src = './plib.js'></script>
+
 		
 	</head>
 	<body>
@@ -94,7 +96,6 @@ function b64encode(str){
 }
 
 function b64decode(str){
-    console.log(str);
     return decodeURIComponent(escape(window.atob(str)));
 }
 
@@ -109,6 +110,10 @@ $(function(){
     , ctx = screen[0].getContext('2d')
     , width = screen[0].width
     , height = screen[0].height
+    , _mousemove = []
+    
+    
+    
     
     // "internal" variables
     var _setInterval = window.setInterval
@@ -118,7 +123,6 @@ $(function(){
       , _prev = ""
     
       , _hashchange = function(){
-        console.log("!!!")
         
         var _val = b64decode(window.location.hash.slice(1) || '')
         if (code.val != _val)
@@ -141,6 +145,19 @@ $(function(){
       return h
     }
     
+    mousemove = function(h){
+      _mousemove.push(h)
+    }
+    
+    $("#screen").on('mousemove',function(e){
+      for (var i = 0; i< _mousemove.length; i++){
+        try{
+          _mousemove[i](e);
+        } catch(e){
+          console.log(e);
+        }
+      }
+    })
     
     code.bind('keyup', function(){
       var _val = code.val();
@@ -149,7 +166,6 @@ $(function(){
       _prev = _val;
       
       try {
-        console.log(width, height);
         
         for (var _i = 0; _i< _intervalHandlers.length; _i++){
           clearInterval(_intervalHandlers[_i]);
@@ -157,6 +173,7 @@ $(function(){
         for (var _i = 0; _i< _timeoutHandlers.length; _i++){
           clearTimeout(_timeoutHandlers[_i]);
         }
+        _mousemove = []
         
         ctx.fillStyle = "#000";
         ctx.fillRect(0,0, width, height)
