@@ -8,10 +8,8 @@ body{
 	background-color:#222;
 	}
 #cont{
-	width:700px;
 	background-color:#ccc;			
 	margin:0 auto;
-	border-radius:30px;
 	text-align:center;
 	}
 #cont p{
@@ -19,14 +17,17 @@ body{
 	} 	
 #cont table{margin:0 auto;}	
 h1{
-	border-top-left-radius:30px;
-	border-top-right-radius:30px;
+  position: absolute;
+  top:0;
+  left: 0;
+  right; 0;
 	background-color:#555;
 	color:#ff9;
 	text-transform:uppercase;
 	text-shadow:#ff9 1px 1px 10px; 
+  margin: 0;
+  padding: 1rem;
 }
-		
 		</style>
 		
 		<script type="text/javascript">
@@ -270,6 +271,9 @@ orbits.ui.slingshot = function(st){
 		
 $(function(){		
 	var screen = $("#orbits")[0];
+  screen.width = document.documentElement.clientWidth
+  screen.height = document.documentElement.clientHeight
+
 	var ctx = screen.getContext('2d');
 
 	var levels = {
