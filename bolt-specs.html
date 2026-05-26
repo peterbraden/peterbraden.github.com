@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bolt Specs Cheat Sheet</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      padding: 2rem;
+      line-height: 1.5;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 600;
+      color: #c8d8ff;
+      margin-bottom: 0.25rem;
+      letter-spacing: 0.03em;
+    }
+
+    .subtitle {
+      color: #7a8aaa;
+      font-size: 0.85rem;
+      margin-bottom: 2rem;
+    }
+
+    section {
+      margin-bottom: 2.5rem;
+    }
+
+    h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #8ab4f8;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid #2a3050;
+    }
+
+    .note {
+      font-size: 0.78rem;
+      color: #7a8aaa;
+      margin-bottom: 0.6rem;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 6px;
+      border: 1px solid #2a3050;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      min-width: 600px;
+    }
+
+    thead th {
+      background: #151525;
+      color: #8ab4f8;
+      font-weight: 600;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.55rem 0.9rem;
+      text-align: right;
+      white-space: nowrap;
+      border-bottom: 2px solid #2a3050;
+    }
+
+    thead th:first-child { text-align: left; }
+
+    thead tr.subhead th {
+      background: #11111f;
+      color: #5a6a8a;
+      font-size: 0.72rem;
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: 0;
+      padding-top: 0.3rem;
+      padding-bottom: 0.3rem;
+      border-bottom: 1px solid #2a3050;
+    }
+
+    tbody tr:nth-child(even) { background: #14142a; }
+    tbody tr:nth-child(odd)  { background: #111120; }
+    tbody tr:hover { background: #1e2245; }
+
+    tbody td {
+      padding: 0.5rem 0.9rem;
+      text-align: right;
+      border-right: 1px solid #1e2040;
+      font-variant-numeric: tabular-nums;
+    }
+
+    tbody td:first-child {
+      text-align: left;
+      font-weight: 700;
+      color: #f0c060;
+      border-right: 2px solid #2a3050;
+    }
+
+    tbody td:last-child { border-right: none; }
+
+    .dim { color: #5a6a8a; font-size: 0.85em; }
+    .hi  { color: #c8e6c9; }
+
+    .col-group-sep { border-left: 2px solid #2a3050 !important; }
+
+    footer {
+      margin-top: 3rem;
+      font-size: 0.75rem;
+      color: #3a4a6a;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Bolt Specs</h1>
+<p class="subtitle">Metric fastener quick-reference &mdash; all dimensions in mm</p>
+
+<!-- ── MAIN BOLT TABLE ──────────────────────────────────────────────── -->
+<section>
+  <h2>M-Series Bolt Dimensions</h2>
+  <p class="note">Thread OD = nominal diameter. Tap drill for standard coarse thread. Clearance holes per ISO 273.</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th rowspan="2">Size</th>
+          <th rowspan="2">Pitch<br><span class="dim">(coarse)</span></th>
+          <th rowspan="2">Thread<br>OD</th>
+          <th rowspan="2">Tap<br>Drill</th>
+          <th colspan="3" style="text-align:center; border-left:2px solid #2a3050">Clearance Hole &mdash; ISO 273</th>
+          <th colspan="2" style="text-align:center; border-left:2px solid #2a3050">Hex Head</th>
+          <th rowspan="2" class="col-group-sep" style="text-align:center">Hex<br>Key</th>
+        </tr>
+        <tr class="subhead">
+          <th class="col-group-sep">Fine</th>
+          <th>Medium</th>
+          <th>Coarse</th>
+          <th class="col-group-sep">A/F<br>(spanner)</th>
+          <th>Head<br>height</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>M2</td>
+          <td>0.4</td><td>2.0</td><td>1.6</td>
+          <td class="col-group-sep">2.2</td><td>2.4</td><td>2.6</td>
+          <td class="col-group-sep">4</td><td>1.4</td>
+          <td class="col-group-sep">1.5</td>
+        </tr>
+        <tr>
+          <td>M2.5</td>
+          <td>0.45</td><td>2.5</td><td>2.05</td>
+          <td class="col-group-sep">2.7</td><td>2.9</td><td>3.1</td>
+          <td class="col-group-sep">5</td><td>1.7</td>
+          <td class="col-group-sep">2</td>
+        </tr>
+        <tr>
+          <td>M3</td>
+          <td>0.5</td><td>3.0</td><td class="hi">2.5</td>
+          <td class="col-group-sep hi">3.2</td><td class="hi">3.4</td><td class="hi">3.6</td>
+          <td class="col-group-sep hi">5.5</td><td>2.0</td>
+          <td class="col-group-sep hi">2.5</td>
+        </tr>
+        <tr>
+          <td>M4</td>
+          <td>0.7</td><td>4.0</td><td>3.3</td>
+          <td class="col-group-sep">4.3</td><td>4.5</td><td>4.8</td>
+          <td class="col-group-sep">7</td><td>2.8</td>
+          <td class="col-group-sep">3</td>
+        </tr>
+        <tr>
+          <td>M5</td>
+          <td>0.8</td><td>5.0</td><td>4.2</td>
+          <td class="col-group-sep">5.3</td><td>5.5</td><td>5.8</td>
+          <td class="col-group-sep">8</td><td>3.5</td>
+          <td class="col-group-sep">4</td>
+        </tr>
+        <tr>
+          <td>M6</td>
+          <td>1.0</td><td>6.0</td><td>5.0</td>
+          <td class="col-group-sep">6.4</td><td>6.6</td><td>7.0</td>
+          <td class="col-group-sep">10</td><td>4.0</td>
+          <td class="col-group-sep">5</td>
+        </tr>
+        <tr>
+          <td>M8</td>
+          <td>1.25</td><td>8.0</td><td>6.75</td>
+          <td class="col-group-sep">8.4</td><td>9.0</td><td>10.0</td>
+          <td class="col-group-sep">13</td><td>5.3</td>
+          <td class="col-group-sep">6</td>
+        </tr>
+        <tr>
+          <td>M10</td>
+          <td>1.5</td><td>10.0</td><td>8.5</td>
+          <td class="col-group-sep">10.5</td><td>11.0</td><td>12.0</td>
+          <td class="col-group-sep">17</td><td>6.4</td>
+          <td class="col-group-sep">8</td>
+        </tr>
+        <tr>
+          <td>M12</td>
+          <td>1.75</td><td>12.0</td><td>10.2</td>
+          <td class="col-group-sep">13.0</td><td>13.5</td><td>14.5</td>
+          <td class="col-group-sep">19</td><td>7.5</td>
+          <td class="col-group-sep">10</td>
+        </tr>
+        <tr>
+          <td>M16</td>
+          <td>2.0</td><td>16.0</td><td>14.0</td>
+          <td class="col-group-sep">17.0</td><td>17.5</td><td>18.5</td>
+          <td class="col-group-sep">24</td><td>10.0</td>
+          <td class="col-group-sep">14</td>
+        </tr>
+        <tr>
+          <td>M20</td>
+          <td>2.5</td><td>20.0</td><td>17.5</td>
+          <td class="col-group-sep">21.0</td><td>22.0</td><td>24.0</td>
+          <td class="col-group-sep">30</td><td>12.5</td>
+          <td class="col-group-sep">17</td>
+        </tr>
+        <tr>
+          <td>M24</td>
+          <td>3.0</td><td>24.0</td><td>21.0</td>
+          <td class="col-group-sep">25.0</td><td>26.0</td><td>28.0</td>
+          <td class="col-group-sep">36</td><td>15.0</td>
+          <td class="col-group-sep">19</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── NOTES ────────────────────────────────────────────────────────── -->
+<section>
+  <h2>Notes</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="text-align:left">Term</th>
+          <th style="text-align:left">Meaning</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="text-align:left; white-space:nowrap">Tap drill</td>
+          <td style="text-align:left">Drill this hole before cutting internal threads (75% engagement, coarse pitch)</td>
+        </tr>
+        <tr>
+          <td style="text-align:left; white-space:nowrap">Clearance &mdash; Fine</td>
+          <td style="text-align:left">Tight fit; bolt passes through with minimal slop. Use when alignment matters.</td>
+        </tr>
+        <tr>
+          <td style="text-align:left; white-space:nowrap">Clearance &mdash; Medium</td>
+          <td style="text-align:left">General-purpose through-hole. Most common choice.</td>
+        </tr>
+        <tr>
+          <td style="text-align:left; white-space:nowrap">Clearance &mdash; Coarse</td>
+          <td style="text-align:left">Loose fit; easier assembly, tolerates misalignment.</td>
+        </tr>
+        <tr>
+          <td style="text-align:left; white-space:nowrap">A/F (across flats)</td>
+          <td style="text-align:left">Spanner / wrench jaw size for hex-head bolts and nuts.</td>
+        </tr>
+        <tr>
+          <td style="text-align:left; white-space:nowrap">Hex key</td>
+          <td style="text-align:left">Allen key / hex socket drive size for cap-head (socket-head) screws.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>All values in millimetres &bull; Coarse thread series &bull; ISO 261 / ISO 273 / DIN 912</footer>
+
+</body>
+</html>
