@@ -431,7 +431,9 @@ void main(){
   ivec3 vox=uvToVox(vUv,uAxis,uSlice);
   int ix=vox.x, iy=vox.y, iz=vox.z;
   if(uMode==0){
-    outColor=vec4(cloudGrad(fAt(uCond,ix,iy,iz).r*500.0),1);
+    // Exponential sensitivity: qc=0.0002 → 0.63, qc=0.001 → 0.99
+    float qc = fAt(uCond,ix,iy,iz).r;
+    outColor=vec4(cloudGrad(1.0 - exp(-qc * 5000.0)),1);
   } else if(uMode==1){
     float vy=fAt(uVel,ix,iy,iz).y * ${(DX/DT).toFixed(3)};
     outColor=vec4(coldHot(vy*0.05+0.5),1);
@@ -556,8 +558,8 @@ function buildIC(){
         const bx=(ix-N/2)/7, by=(iy-N/8)/7, bz=(iz-N/2)/7;
         const bump=Math.exp(-(bx*bx+by*by+bz*bz)*0.7);
 
-        thermoData[i4+0] = 3.0*bump;                         // +3 K thermal
-        thermoData[i4+1] = Math.max(qv_bg + 0.006*bump, 0); // extra moisture → LCL reached sooner
+        thermoData[i4+0] = 3.0*bump;                          // +3 K thermal
+        thermoData[i4+1] = Math.max(qv_bg + 0.012*bump, 0); // extra moisture → ensures supersaturation
       }
     }
   }
@@ -763,6 +765,30 @@ function estimateCAPE(){
 //  MAIN LOOP
 // ============================================================
 let stepCount = 0, paused = false, frameAccum = 0;
+let diagDone = false;
+
+// Read back the cond texture at the bubble voxel to verify qc is non-zero on GPU.
+// Bubble is at ix=32, iy=8, iz=32 → slab atlas texel: x=32, y=264
+// (iz%SPD*N+ix = 0*64+32=32,  iz/SPD*N+iy = 4*64+8=264)
+function diagReadback(){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, cond.fbo[cond.cur]); // FBO for current read tex
+  // R16F FBO: read as RED+FLOAT (valid with EXT_color_buffer_float)
+  const px = new Float32Array(1);
+  gl.readPixels(32, 264, 1, 1, gl.RED, gl.FLOAT, px);
+  const err = gl.getError();
+  if(err){ // fallback to RGBA if RED read fails
+    const px4 = new Float32Array(4);
+    gl.readPixels(32, 264, 1, 1, gl.RGBA, gl.FLOAT, px4);
+    console.log(`[diag step ${stepCount}] bubble qc (RGBA fallback) = ${px4[0].toExponential(4)}, gl.getError was ${err}`);
+  } else {
+    console.log(`[diag step ${stepCount}] bubble qc (ix=32,iy=8,iz=32) = ${px[0].toExponential(4)}`);
+  }
+  // Sample a 5-pixel strip around the bubble row at y=264
+  const strip = new Float32Array(5);
+  gl.readPixels(30, 264, 5, 1, gl.RED, gl.FLOAT, strip);
+  console.log('[diag] strip x=30..34, y=264:', Array.from(strip).map(v=>v.toExponential(3)).join(', '));
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
 
 const slicePosEl  = document.getElementById('slicePos');
 const slicePosVal = document.getElementById('slicePosVal');
@@ -800,6 +826,9 @@ function loop(){
   if(paused){ return; }
   frameAccum += currentStepsPerFrame();
   while(frameAccum >= 1){ simStep(); stepCount++; frameAccum--; }
+
+  // One-time readback after ~20 steps to verify qc values on GPU
+  if(!diagDone && stepCount >= 20){ diagDone = true; diagReadback(); }
 
   const axMap={x:0,y:1,z:2};
   render(parseInt(slicePosEl.value,10), axMap[sliceAxisEl.value], parseInt(viewModeEl.value,10));
