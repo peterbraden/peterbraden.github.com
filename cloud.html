@@ -85,7 +85,7 @@ input[type=range].ps { width: 70px; accent-color: #56f; flex-shrink: 0; }
       <option value="4">Speed</option>
     </select>
   </label>
-  <label>Steps/frame: <input type="range" id="speed" min="1" max="8" value="2"> <span id="speedVal">2</span></label>
+  <label>Speed: <input type="range" id="speed" min="0" max="6" value="1"> <span id="speedVal">¼ step/frame</span></label>
   <button id="resetBtn">Reset</button>
   <button id="pauseBtn">Pause</button>
 </div>
@@ -426,7 +426,7 @@ void main(){
   ivec3 vox=uvToVox(vUv,uAxis,uSlice);
   int ix=vox.x, iy=vox.y, iz=vox.z;
   if(uMode==0){
-    outColor=vec4(cloudGrad(fAt(uCond,ix,iy,iz).r*150.0),1);
+    outColor=vec4(cloudGrad(fAt(uCond,ix,iy,iz).r*500.0),1);
   } else if(uMode==1){
     float vy=fAt(uVel,ix,iy,iz).y * ${(DX/DT).toFixed(3)};
     outColor=vec4(coldHot(vy*0.15+0.5),1);
@@ -551,8 +551,8 @@ function buildIC(){
         const bx=(ix-N/2)/7, by=(iy-N/8)/7, bz=(iz-N/2)/7;
         const bump=Math.exp(-(bx*bx+by*by+bz*bz)*0.7);
 
-        thermoData[i4+0] = 2.5*bump;
-        thermoData[i4+1] = Math.max(qv_bg + 0.004*bump, 0);
+        thermoData[i4+0] = 3.0*bump;                         // +3 K thermal
+        thermoData[i4+1] = Math.max(qv_bg + 0.006*bump, 0); // extra moisture → LCL reached sooner
       }
     }
   }
@@ -636,18 +636,22 @@ function simStep(){
   runQuad(progForce,vel.write); vel.swap();
 
   // 5. Condensation: update (θ', qv)
+  // Save the pre-condensation thermo texture before the swap — step 6 must
+  // read the same input state so both passes compute a consistent saturation.
+  const thermoPreCond = thermo.read;
   gl.useProgram(progCondTh);
-  bindTex(0,thermo.read); u1i(progCondTh,'uThermo',0);
-  bindTex(1,cond.read);   u1i(progCondTh,'uCond',1);
+  bindTex(0, thermoPreCond); u1i(progCondTh,'uThermo',0);
+  bindTex(1,cond.read);      u1i(progCondTh,'uCond',1);
   u1f(progCondTh,'uQs0',QS0); u1f(progCondTh,'uQsA',QS_A);
   u1f(progCondTh,'uTSurf',T_SURF); u1f(progCondTh,'uLCp',L_CP);
   u1f(progCondTh,'uGammaScale',gs);
   runQuad(progCondTh,thermo.write); thermo.swap();
 
-  // 6. Condensation: update qc
+  // 6. Condensation: update qc — use thermoPreCond (pre-condensation), NOT
+  //    thermo.read which now points to the post-condensation texture after swap.
   gl.useProgram(progCondQc);
-  bindTex(0,thermo.read); u1i(progCondQc,'uThermo',0);
-  bindTex(1,cond.read);   u1i(progCondQc,'uCond',1);
+  bindTex(0, thermoPreCond); u1i(progCondQc,'uThermo',0);
+  bindTex(1,cond.read);      u1i(progCondQc,'uCond',1);
   u1f(progCondQc,'uQs0',QS0); u1f(progCondQc,'uQsA',QS_A);
   u1f(progCondQc,'uTSurf',T_SURF); u1f(progCondQc,'uGammaScale',gs);
   runQuad(progCondQc,cond.write); cond.swap();
@@ -752,8 +756,7 @@ function estimateCAPE(){
 // ============================================================
 //  MAIN LOOP
 // ============================================================
-let stepCount = 0, paused = false;
-initSimulation();
+let stepCount = 0, paused = false, frameAccum = 0;
 
 const slicePosEl  = document.getElementById('slicePos');
 const slicePosVal = document.getElementById('slicePosVal');
@@ -762,11 +765,23 @@ const sliceAxisEl = document.getElementById('sliceAxis');
 const speedEl     = document.getElementById('speed');
 const speedVal    = document.getElementById('speedVal');
 
+// Slider index → steps-per-frame rate (fractional values slow the sim down)
+const SPEED_STOPS = [0.05, 0.25, 0.5, 1, 2, 4, 8];
+const SPEED_LABELS = ['1/20', '¼', '½', '1', '2', '4', '8'];
+function currentStepsPerFrame(){ return SPEED_STOPS[parseInt(speedEl.value,10)]; }
+
 slicePosEl.addEventListener('input', ()=> slicePosVal.textContent=slicePosEl.value);
-speedEl.addEventListener('input',    ()=> speedVal.textContent=speedEl.value);
+speedEl.addEventListener('input', ()=>{
+  const i = parseInt(speedEl.value,10);
+  speedVal.textContent = SPEED_LABELS[i] + ' step/frame';
+});
+// Set initial label
+speedVal.textContent = SPEED_LABELS[parseInt(speedEl.value,10)] + ' step/frame';
+
+initSimulation();
 
 document.getElementById('resetBtn').addEventListener('click', ()=>{
-  initSimulation(); paused=false;
+  initSimulation(); frameAccum=0; paused=false;
   document.getElementById('pauseBtn').textContent='Pause';
 });
 document.getElementById('pauseBtn').addEventListener('click', ()=>{
@@ -777,9 +792,8 @@ document.getElementById('pauseBtn').addEventListener('click', ()=>{
 
 function loop(){
   if(paused){ return; }
-  const n=parseInt(speedEl.value,10);
-  for(let i=0;i<n;i++) simStep();
-  stepCount+=n;
+  frameAccum += currentStepsPerFrame();
+  while(frameAccum >= 1){ simStep(); stepCount++; frameAccum--; }
 
   const axMap={x:0,y:1,z:2};
   render(parseInt(slicePosEl.value,10), axMap[sliceAxisEl.value], parseInt(viewModeEl.value,10));
