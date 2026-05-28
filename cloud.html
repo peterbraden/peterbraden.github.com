@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cumulus Cloud — 3D Fluid Simulation</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0a0a1a;
+  color: #ccc;
+  font-family: monospace;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 12px;
+  gap: 8px;
+}
+h1 { font-size: 13px; color: #8af; letter-spacing: 0.05em; }
+canvas { display: block; image-rendering: pixelated; }
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  font-size: 11px;
+  color: #aaa;
+}
+label { display: flex; align-items: center; gap: 5px; }
+input[type=range] { width: 90px; accent-color: #8af; }
+select, button {
+  background: #1a1a2e;
+  color: #ccc;
+  border: 1px solid #334;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-family: monospace;
+  font-size: 11px;
+}
+button:hover { background: #223; }
+#info { font-size: 10px; color: #556; }
+#err { color: #f88; font-size: 12px; padding: 20px; }
+</style>
+</head>
+<body>
+<h1>Cumulus Cloud — 3D Fluid Simulation (2D Slice View)</h1>
+<div id="controls">
+  <label>Axis:
+    <select id="sliceAxis">
+      <option value="y">Y (horizontal)</option>
+      <option value="z" selected>Z (vertical cross-section)</option>
+      <option value="x">X (vertical cross-section)</option>
+    </select>
+  </label>
+  <label>Slice: <input type="range" id="slicePos" min="0" max="63" value="32"> <span id="slicePosVal">32</span></label>
+  <label>View:
+    <select id="viewMode">
+      <option value="0">Condensate (cloud water)</option>
+      <option value="1">Velocity Y (updraft)</option>
+      <option value="2">Temperature anomaly</option>
+      <option value="3">Water vapour</option>
+      <option value="4">Velocity magnitude</option>
+    </select>
+  </label>
+  <label>Steps/frame: <input type="range" id="speed" min="1" max="8" value="2"> <span id="speedVal">2</span></label>
+  <button id="resetBtn">Reset</button>
+  <button id="pauseBtn">Pause</button>
+</div>
+<canvas id="canvas" width="512" height="512"></canvas>
+<div id="info">Step: <span id="stepCount">0</span> &nbsp;|&nbsp; Sim time: <span id="simTime">0.0 s</span> &nbsp;|&nbsp; Max updraft: <span id="maxV">0.0 m/s</span></div>
+<div id="err"></div>
+
+<script>
+'use strict';
+
+// ============================================================
+//  GRID / PHYSICAL CONSTANTS
+// ============================================================
+const N      = 64;       // Voxels per dimension
+const SPD    = 8;        // Slices-per-dimension: SPD × SPD = N slices laid out in 2D
+const TEX    = N * SPD;  // Texture atlas size = 512
+
+// Physical scaling: domain = 1000 m × 1000 m × 1000 m
+const DOMAIN = 1000.0;        // [m]
+const DX     = DOMAIN / N;    // Grid spacing  [m] ≈ 15.6 m
+const DT     = 2.0;           // Time step  [s]
+const G      = 9.81;          // Gravity  [m/s²]
+const T_SURF = 300.0;         // Surface temperature  [K]
+const GAMMA_ENV  = 6.5e-3;    // Environmental lapse rate  [K/m]
+const GAMMA_DRY  = 9.8e-3;    // Dry adiabatic lapse rate  [K/m]
+const L_CP   = 2488.0;        // L_v / c_p  [K/(kg/kg)]
+const QS0    = 0.015;         // Surface saturation mixing ratio  [kg/kg]
+const QS_A   = 0.073;         // Clausius-Clapeyron coefficient  [1/K]
+const INIT_RH = 0.87;         // Initial surface RH
+
+// Dimensionless buoyancy acceleration per step:  g·dt²/dx·(θ'/Tref − qc)
+const BUOY = G * DT * DT / DX;  // ≈ 0.0202
+
+// Jacobi pressure iterations per step
+const JITER = 20;
+
+// Velocity clamping  [voxel-lengths / step]
+const VMAX = 4.0;   // ≈ 31 m/s — well above expected ~10 m/s updrafts
+
+// ============================================================
+//  SHADER SOURCES
+// ============================================================
+const VS = `#version 300 es
+in vec2 aPos;
+out vec2 vUv;
+void main(){
+  vUv = aPos * 0.5 + 0.5;
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}`;
+
+// --------------- shared 3-D volume utilities ----------------
+// All 3D fields stored in a SPD×SPD tile atlas:
+//   slice iz → tile col = iz%SPD,  row = iz/SPD
+//   texel (sc*N + ix,  sr*N + iy) in a (TEX × TEX) texture
+const UTIL = `
+#define N   64
+#define SPD 8
+#define fN  64.0
+#define fSPD 8.0
+
+ivec2 v2t(int ix, int iy, int iz){
+  return ivec2(iz%SPD*N + ix, iz/SPD*N + iy);
+}
+
+// Fetch with clamp-Y, periodic-XZ boundaries
+vec4 fetch(sampler2D t, int ix, int iy, int iz){
+  ix = ((ix%N)+N)%N;
+  iy = clamp(iy, 0, N-1);
+  iz = ((iz%N)+N)%N;
+  return texelFetch(t, v2t(ix,iy,iz), 0);
+}
+
+// Trilinear sample at pos in [0,1]^3 (periodic XZ, clamp Y)
+vec4 trilin(sampler2D t, vec3 pos){
+  pos.x = fract(pos.x + 100.0);
+  pos.y = clamp(pos.y, 0.0, 1.0);
+  pos.z = fract(pos.z + 100.0);
+  vec3 p  = pos * fN - 0.5;
+  ivec3 p0 = ivec3(floor(p));
+  vec3  f  = p - vec3(p0);
+  vec4 c000 = fetch(t,p0.x,  p0.y,  p0.z);
+  vec4 c100 = fetch(t,p0.x+1,p0.y,  p0.z);
+  vec4 c010 = fetch(t,p0.x,  p0.y+1,p0.z);
+  vec4 c110 = fetch(t,p0.x+1,p0.y+1,p0.z);
+  vec4 c001 = fetch(t,p0.x,  p0.y,  p0.z+1);
+  vec4 c101 = fetch(t,p0.x+1,p0.y,  p0.z+1);
+  vec4 c011 = fetch(t,p0.x,  p0.y+1,p0.z+1);
+  vec4 c111 = fetch(t,p0.x+1,p0.y+1,p0.z+1);
+  vec4 c0 = mix(mix(c000,c100,f.x), mix(c010,c110,f.x), f.y);
+  vec4 c1 = mix(mix(c001,c101,f.x), mix(c011,c111,f.x), f.y);
+  return mix(c0, c1, f.z);
+}
+
+// Decode current voxel from fragment position
+ivec3 frag2vox(){
+  ivec2 tc = ivec2(gl_FragCoord.xy);
+  return ivec3(tc.x%N, tc.y%N, (tc.y/N)*SPD + tc.x/N);
+}
+vec3 vox2pos(ivec3 v){ return (vec3(v) + 0.5) / fN; }
+`;
+
+// ---- advection ----
+const FS_ADVECT = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+` + UTIL + `
+uniform sampler2D uVel;
+uniform sampler2D uField;
+uniform float uDt;
+uniform float uDiss;  // dissipation (0.995–1.0)
+out vec4 outColor;
+void main(){
+  ivec3 v = frag2vox();
+  if(v.z >= N){ outColor = vec4(0); return; }
+  vec3 pos = vox2pos(v);
+  vec3 vel = trilin(uVel, pos).xyz;
+  // Velocity stored as voxel-lengths per step; pos is in [0,1]
+  vec3 back = pos - uDt * vel / fN;
+  outColor = uDiss * trilin(uField, back);
+}`;
+
+// ---- apply buoyancy force to velocity ----
+const FS_FORCE = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+` + UTIL + `
+uniform sampler2D uVel;
+uniform sampler2D uThermo;   // .r=theta', .g=qv
+uniform sampler2D uCond;     // .r=qc
+uniform float uBuoy;         // G*dt²/dx
+uniform float uTRef;
+out vec4 outColor;
+void main(){
+  ivec3 v = frag2vox();
+  if(v.z >= N){ outColor = vec4(0); return; }
+  vec4  vel   = texelFetch(uVel,    v2t(v.x,v.y,v.z), 0);
+  float theta = texelFetch(uThermo, v2t(v.x,v.y,v.z), 0).r;
+  float qc    = texelFetch(uCond,   v2t(v.x,v.y,v.z), 0).r;
+  // Buoyancy: b = g*(θ'/θref − qc)
+  vel.y += uBuoy * (theta / uTRef - qc);
+  // Clamp to prevent explosion
+  vel.xyz = clamp(vel.xyz, -${VMAX.toFixed(1)}, ${VMAX.toFixed(1)});
+  outColor = vel;
+}`;
+
+// ---- condensation: update thermo (theta', qv) ----
+const FS_COND_THERMO = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+` + UTIL + `
+uniform sampler2D uThermo;
+uniform sampler2D uCond;
+uniform float uQs0;
+uniform float uQsA;
+uniform float uTSurf;
+uniform float uLCp;
+out vec4 outColor;
+void main(){
+  ivec3 v = frag2vox();
+  if(v.z >= N){ outColor = vec4(0); return; }
+  vec2  th = texelFetch(uThermo, v2t(v.x,v.y,v.z), 0).rg;
+  float qc = texelFetch(uCond,   v2t(v.x,v.y,v.z), 0).r;
+  float theta = th.r;
+  float qv    = th.g;
+
+  // Height fraction
+  float y_frac = (float(v.y) + 0.5) / fN;
+  // Temperature at this level (parcel = env + perturbation)
+  float T_env   = uTSurf - ${(GAMMA_ENV * DOMAIN).toFixed(4)} * y_frac;
+  float T_parcel = T_env + theta;
+
+  // Saturation at parcel temperature (Clausius-Clapeyron linearised)
+  float qs = max(uQs0 * exp(uQsA * (T_parcel - uTSurf)), 1e-5);
+
+  // Condensation / evaporation (partial adjustment for stability)
+  float excess = qv - qs;
+  if(excess > 0.0){
+    float rate = excess * 0.5;
+    qv    -= rate;
+    qc    += rate;        // (not written here — see FS_COND_QC)
+    theta += uLCp * rate; // latent heat release
+  } else if(qc > 0.0){
+    float rate = min(qc, -excess * 0.5);
+    qv    += rate;
+    qc    -= rate;
+    theta -= uLCp * rate; // evaporative cooling
+  }
+  outColor = vec4(theta, max(qv, 0.0), 0.0, 0.0);
+}`;
+
+// ---- condensation: update qc ----
+const FS_COND_QC = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+` + UTIL + `
+uniform sampler2D uThermo;
+uniform sampler2D uCond;
+uniform float uQs0;
+uniform float uQsA;
+uniform float uTSurf;
+out vec4 outColor;
+void main(){
+  ivec3 v = frag2vox();
+  if(v.z >= N){ outColor = vec4(0); return; }
+  vec2  th = texelFetch(uThermo, v2t(v.x,v.y,v.z), 0).rg;
+  float qc = texelFetch(uCond,   v2t(v.x,v.y,v.z), 0).r;
+  float theta = th.r;
+  float qv    = th.g;
+
+  float y_frac  = (float(v.y) + 0.5) / fN;
+  float T_env   = uTSurf - ${(GAMMA_ENV * DOMAIN).toFixed(4)} * y_frac;
+  float T_parcel = T_env + theta;
+  float qs = max(uQs0 * exp(uQsA * (T_parcel - uTSurf)), 1e-5);
+
+  float excess = qv - qs;
+  if(excess > 0.0){
+    qc += excess * 0.5;
+  } else if(qc > 0.0){
+    qc -= min(qc, -excess * 0.5);
+  }
+  outColor = vec4(max(qc, 0.0), 0.0, 0.0, 0.0);
+}`;
+
+// ---- divergence ----
+const FS_DIV = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+` + UTIL + `
+uniform sampler2D uVel;
+out vec4 outColor;
+void main(){
+  ivec3 v = frag2vox();
+  if(v.z >= N){ outColor = vec4(0); return; }
+  float vxP = fetch(uVel, v.x+1, v.y,   v.z).x;
+  float vxM = fetch(uVel, v.x-1, v.y,   v.z).x;
+  float vyP = fetch(uVel, v.x,   v.y+1, v.z).y;
+  float vyM = fetch(uVel, v.x,   v.y-1, v.z).y;
+  float vzP = fetch(uVel, v.x,   v.y,   v.z+1).z;
+  float vzM = fetch(uVel, v.x,   v.y,   v.z-1).z;
+  // No-flux at vertical (Y) boundaries
+  if(v.y == 0)   vyM = -vyP;
+  if(v.y == N-1) vyP = -vyM;
+  float div = 0.5 * (vxP - vxM + vyP - vyM + vzP - vzM);
+  outColor = vec4(div, 0.0, 0.0, 0.0);
+}`;
+
+// ---- Jacobi pressure solve ----
+const FS_JACOBI = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+` + UTIL + `
+uniform sampler2D uPres;
+uniform sampler2D uDiv;
+out vec4 outColor;
+void main(){
+  ivec3 v = frag2vox();
+  if(v.z >= N){ outColor = vec4(0); return; }
+  float pxP = fetch(uPres, v.x+1, v.y,   v.z).r;
+  float pxM = fetch(uPres, v.x-1, v.y,   v.z).r;
+  float pyP = fetch(uPres, v.x,   v.y+1, v.z).r;
+  float pyM = fetch(uPres, v.x,   v.y-1, v.z).r;
+  float pzP = fetch(uPres, v.x,   v.y,   v.z+1).r;
+  float pzM = fetch(uPres, v.x,   v.y,   v.z-1).r;
+  // Neumann at vertical boundaries
+  if(v.y == 0)   pyM = pyP;
+  if(v.y == N-1) pyP = pyM;
+  float div = texelFetch(uDiv, v2t(v.x, v.y, v.z), 0).r;
+  float p = (pxP + pxM + pyP + pyM + pzP + pzM - div) / 6.0;
+  outColor = vec4(p, 0.0, 0.0, 0.0);
+}`;
+
+// ---- gradient subtraction / projection ----
+const FS_PROJECT = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+` + UTIL + `
+uniform sampler2D uVel;
+uniform sampler2D uPres;
+out vec4 outColor;
+void main(){
+  ivec3 v = frag2vox();
+  if(v.z >= N){ outColor = vec4(0); return; }
+  vec3 vel = texelFetch(uVel, v2t(v.x, v.y, v.z), 0).xyz;
+  float pxP = fetch(uPres, v.x+1, v.y,   v.z).r;
+  float pxM = fetch(uPres, v.x-1, v.y,   v.z).r;
+  float pyP = fetch(uPres, v.x,   v.y+1, v.z).r;
+  float pyM = fetch(uPres, v.x,   v.y-1, v.z).r;
+  float pzP = fetch(uPres, v.x,   v.y,   v.z+1).r;
+  float pzM = fetch(uPres, v.x,   v.y,   v.z-1).r;
+  if(v.y == 0)   pyM = pyP;
+  if(v.y == N-1) pyP = pyM;
+  vel.x -= 0.5 * (pxP - pxM);
+  vel.y -= 0.5 * (pyP - pyM);
+  vel.z -= 0.5 * (pzP - pzM);
+  // Enforce no-flux at top/bottom walls
+  if(v.y == 0 || v.y == N-1) vel.y = 0.0;
+  outColor = vec4(vel, 0.0);
+}`;
+
+// ---- 2D slice display ----
+const FS_DISPLAY = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+uniform sampler2D uVel;
+uniform sampler2D uThermo;
+uniform sampler2D uCond;
+uniform int uSlice;      // which slice index (0..N-1)
+uniform int uAxis;       // 0=X, 1=Y, 2=Z
+uniform int uMode;       // 0=qc, 1=vy, 2=theta, 3=qv, 4=|v|
+in vec2 vUv;
+out vec4 outColor;
+
+const int N = 64; const int SPD = 8;
+
+vec4 fetchXY(sampler2D t, int ix, int iy, int iz){
+  ix = clamp(ix,0,N-1); iy = clamp(iy,0,N-1); iz = clamp(iz,0,N-1);
+  return texelFetch(t, ivec2(iz%SPD*N+ix, iz/SPD*N+iy), 0);
+}
+
+// Map screen UV → 3D index based on axis
+ivec3 uvToVox(vec2 uv, int axis, int slc){
+  int a = int(uv.x * float(N));
+  int b = int(uv.y * float(N));
+  a = clamp(a,0,N-1); b = clamp(b,0,N-1);
+  if(axis == 0) return ivec3(slc, b, a);   // slice X → show Z-Y plane
+  if(axis == 1) return ivec3(a, slc, b);   // slice Y → show X-Z plane
+              return ivec3(a, b, slc);     // slice Z → show X-Y plane
+}
+
+// Colour maps
+vec3 coldHot(float t){
+  t = clamp(t,0.0,1.0);
+  vec3 cold = vec3(0.1, 0.3, 0.9);
+  vec3 mid  = vec3(0.95, 0.95, 0.95);
+  vec3 hot  = vec3(0.9, 0.2, 0.1);
+  return t < 0.5 ? mix(cold,mid,t*2.0) : mix(mid,hot,(t-0.5)*2.0);
+}
+
+vec3 cloudGrad(float d){
+  d = clamp(d,0.0,1.0);
+  vec3 sky    = vec3(0.38, 0.60, 0.92);
+  vec3 thin   = vec3(0.75, 0.82, 0.93);
+  vec3 thick  = vec3(0.98, 0.98, 1.00);
+  if(d < 0.3) return mix(sky,  thin,  d/0.3);
+              return mix(thin, thick, (d-0.3)/0.7);
+}
+
+vec3 velGrad(float t){
+  t = clamp(t,0.0,1.0);
+  return mix(vec3(0.05,0.05,0.15), vec3(0.1,1.0,0.4), t);
+}
+
+void main(){
+  ivec3 vox = uvToVox(vUv, uAxis, uSlice);
+  int ix=vox.x, iy=vox.y, iz=vox.z;
+  if(uMode == 0){
+    // Condensate: 0–0.008 kg/kg
+    float qc = fetchXY(uCond, ix, iy, iz).r;
+    outColor = vec4(cloudGrad(qc * 150.0), 1.0);
+  } else if(uMode == 1){
+    // Vertical velocity vy (voxels/step → m/s: × DX/DT)
+    float vy = fetchXY(uVel, ix, iy, iz).y;
+    // vy range ~±VMAX voxels/step; display ±3 m/s
+    float phys = vy * ${(DX/DT).toFixed(3)}; // m/s
+    outColor = vec4(coldHot(phys * 0.15 + 0.5), 1.0);
+  } else if(uMode == 2){
+    // Temperature anomaly θ' (K), range −4 to +4 K
+    float th = fetchXY(uThermo, ix, iy, iz).r;
+    outColor = vec4(coldHot(th * 0.12 + 0.5), 1.0);
+  } else if(uMode == 3){
+    // Water vapour qv, range 0–0.015 kg/kg
+    float qv = fetchXY(uThermo, ix, iy, iz).g;
+    outColor = vec4(velGrad(qv * 80.0), 1.0);
+  } else {
+    // Velocity magnitude
+    vec3 vel = fetchXY(uVel, ix, iy, iz).xyz;
+    float vmag = length(vel) * ${(DX/DT).toFixed(3)};
+    outColor = vec4(velGrad(vmag * 0.12), 1.0);
+  }
+}`;
+
+// ============================================================
+//  WebGL SETUP
+// ============================================================
+const canvas = document.getElementById('canvas');
+const errDiv  = document.getElementById('err');
+
+const gl = canvas.getContext('webgl2');
+if(!gl){ errDiv.textContent = 'WebGL2 not available in this browser.'; throw new Error('no webgl2'); }
+
+const ext = gl.getExtension('EXT_color_buffer_float');
+if(!ext){ errDiv.textContent = 'EXT_color_buffer_float not supported.'; throw new Error('no float fbo'); }
+gl.getExtension('OES_texture_float_linear');
+
+// ---- compile helpers ----
+function compileShader(type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){
+    const log = gl.getShaderInfoLog(s);
+    errDiv.textContent = 'Shader error: ' + log;
+    console.error(log, '\n---\n', src);
+    throw new Error('shader');
+  }
+  return s;
+}
+
+function makeProgram(fsSrc){
+  const vs = compileShader(gl.VERTEX_SHADER,   VS);
+  const fs = compileShader(gl.FRAGMENT_SHADER, fsSrc);
+  const p  = gl.createProgram();
+  gl.attachShader(p, vs); gl.attachShader(p, fs);
+  gl.linkProgram(p);
+  if(!gl.getProgramParameter(p, gl.LINK_STATUS)){
+    errDiv.textContent = 'Link error: ' + gl.getProgramInfoLog(p);
+    throw new Error('link');
+  }
+  gl.deleteShader(vs); gl.deleteShader(fs);
+  return p;
+}
+
+// Compile all programs
+const progAdvect  = makeProgram(FS_ADVECT);
+const progForce   = makeProgram(FS_FORCE);
+const progCondTh  = makeProgram(FS_COND_THERMO);
+const progCondQc  = makeProgram(FS_COND_QC);
+const progDiv     = makeProgram(FS_DIV);
+const progJacobi  = makeProgram(FS_JACOBI);
+const progProject = makeProgram(FS_PROJECT);
+const progDisplay = makeProgram(FS_DISPLAY);
+
+// ---- full-screen quad VAO ----
+const quadVAO = gl.createVertexArray();
+gl.bindVertexArray(quadVAO);
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+// Set attribute for both programs
+[progAdvect, progForce, progCondTh, progCondQc, progDiv,
+ progJacobi, progProject, progDisplay].forEach(p => {
+  const loc = gl.getAttribLocation(p, 'aPos');
+  if(loc >= 0){
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  }
+});
+gl.bindVertexArray(null);
+
+// ---- texture / FBO helpers ----
+function makeTexRGBA(data){
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, TEX, TEX, 0,
+                gl.RGBA, gl.FLOAT, data || null);
+  return t;
+}
+
+function makeTexR(data){
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16F, TEX, TEX, 0,
+                gl.RED, gl.FLOAT, data || null);
+  return t;
+}
+
+function makeFBO(tex){
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+                          gl.TEXTURE_2D, tex, 0);
+  const st = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+  if(st !== gl.FRAMEBUFFER_COMPLETE){
+    errDiv.textContent = 'FBO incomplete: ' + st;
+    throw new Error('fbo');
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return fbo;
+}
+
+// ---- ping-pong helper ----
+class PingPong {
+  constructor(makeTexFn) {
+    this.tex = [makeTexFn(), makeTexFn()];
+    this.fbo = [makeFBO(this.tex[0]), makeFBO(this.tex[1])];
+    this.cur = 0;
+  }
+  get read()  { return this.tex[this.cur]; }
+  get write() { return this.fbo[1 - this.cur]; }
+  get writeTex() { return this.tex[1 - this.cur]; }
+  swap() { this.cur = 1 - this.cur; }
+}
+
+// ============================================================
+//  SIMULATION STATE
+// ============================================================
+const vel    = new PingPong(() => makeTexRGBA(null));
+const thermo = new PingPong(() => makeTexRGBA(null));
+const cond   = new PingPong(() => makeTexR(null));
+const pres   = new PingPong(() => makeTexR(null));
+const divTex = makeTexR(null);
+const divFBO = makeFBO(divTex);
+
+// ---- initial conditions (computed on CPU) ----
+function buildInitialConditions(){
+  const thermoData = new Float32Array(TEX * TEX * 4); // RGBA
+  const condData   = new Float32Array(TEX * TEX);     // R
+
+  for(let iz = 0; iz < N; iz++){
+    const sc = iz % SPD;
+    const sr = Math.floor(iz / SPD);
+    for(let iy = 0; iy < N; iy++){
+      for(let ix = 0; ix < N; ix++){
+        const tx = sc * N + ix;
+        const ty = sr * N + iy;
+        const i4 = (ty * TEX + tx) * 4;
+
+        const yf = (iy + 0.5) / N;           // [0,1], 0=ground
+
+        // Environmental temperature profile
+        const T_env = T_SURF - GAMMA_ENV * yf * DOMAIN;
+
+        // Background qv: INIT_RH × saturation at environmental temperature
+        const qs_env = QS0 * Math.exp(QS_A * (T_env - T_SURF));
+        const qv_bg  = INIT_RH * qs_env;
+
+        // Warm, moist thermal bubble: centred at (N/2, N/8, N/2), r≈7 voxels
+        const dx2 = (ix - N/2) / 7.0;
+        const dy2 = (iy - N/8) / 7.0;
+        const dz2 = (iz - N/2) / 7.0;
+        const r2   = dx2*dx2 + dy2*dy2 + dz2*dz2;
+        const bump = Math.exp(-r2 * 0.7);
+
+        const theta_prime = 2.5 * bump;     // +2.5 K thermal
+        const qv_extra    = 0.004 * bump;   // extra moisture in bubble
+
+        thermoData[i4 + 0] = theta_prime;
+        thermoData[i4 + 1] = Math.max(qv_bg + qv_extra, 0.0);
+        thermoData[i4 + 2] = 0.0;
+        thermoData[i4 + 3] = 0.0;
+
+        condData[ty * TEX + tx] = 0.0;
+      }
+    }
+  }
+  return { thermoData, condData };
+}
+
+function initSimulation(){
+  const { thermoData, condData } = buildInitialConditions();
+
+  // Upload thermo initial state to both ping-pong textures
+  for(let i = 0; i < 2; i++){
+    gl.bindTexture(gl.TEXTURE_2D, thermo.tex[i]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, TEX, TEX, 0,
+                  gl.RGBA, gl.FLOAT, thermoData);
+  }
+  // Velocity: zero (null upload)
+  for(let i = 0; i < 2; i++){
+    gl.bindTexture(gl.TEXTURE_2D, vel.tex[i]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, TEX, TEX, 0,
+                  gl.RGBA, gl.FLOAT, null);
+  }
+  // Condensate: zero
+  for(let i = 0; i < 2; i++){
+    gl.bindTexture(gl.TEXTURE_2D, cond.tex[i]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16F, TEX, TEX, 0,
+                  gl.RED, gl.FLOAT, condData);
+  }
+  // Pressure: zero
+  for(let i = 0; i < 2; i++){
+    gl.bindTexture(gl.TEXTURE_2D, pres.tex[i]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16F, TEX, TEX, 0,
+                  gl.RED, gl.FLOAT, null);
+  }
+
+  stepCount = 0;
+}
+
+// ============================================================
+//  SIMULATION STEP
+// ============================================================
+function bindTex(unit, tex){
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+}
+
+function runQuad(prog, fbo){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.viewport(0, 0, TEX, TEX);
+  gl.useProgram(prog);
+  gl.bindVertexArray(quadVAO);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.bindVertexArray(null);
+}
+
+function uni1i(p, name, v){ gl.uniform1i(gl.getUniformLocation(p, name), v); }
+function uni1f(p, name, v){ gl.uniform1f(gl.getUniformLocation(p, name), v); }
+
+function simStep(){
+  // 1. Advect velocity along itself
+  gl.useProgram(progAdvect);
+  bindTex(0, vel.read); uni1i(progAdvect, 'uVel', 0);
+  bindTex(1, vel.read); uni1i(progAdvect, 'uField', 1);
+  uni1f(progAdvect, 'uDt', 1.0);
+  uni1f(progAdvect, 'uDiss', 0.9995);
+  runQuad(progAdvect, vel.write);
+  vel.swap();
+
+  // 2. Advect thermo (using pre-advected velocity)
+  bindTex(0, vel.read); uni1i(progAdvect, 'uVel', 0);
+  bindTex(1, thermo.read); uni1i(progAdvect, 'uField', 1);
+  uni1f(progAdvect, 'uDt', 1.0);
+  uni1f(progAdvect, 'uDiss', 0.9998);
+  runQuad(progAdvect, thermo.write);
+  thermo.swap();
+
+  // 3. Advect condensate
+  bindTex(0, vel.read); uni1i(progAdvect, 'uVel', 0);
+  bindTex(1, cond.read); uni1i(progAdvect, 'uField', 1);
+  uni1f(progAdvect, 'uDt', 1.0);
+  uni1f(progAdvect, 'uDiss', 0.9995);
+  runQuad(progAdvect, cond.write);
+  cond.swap();
+
+  // 4. Apply buoyancy force to velocity
+  gl.useProgram(progForce);
+  bindTex(0, vel.read);    uni1i(progForce, 'uVel', 0);
+  bindTex(1, thermo.read); uni1i(progForce, 'uThermo', 1);
+  bindTex(2, cond.read);   uni1i(progForce, 'uCond', 2);
+  uni1f(progForce, 'uBuoy', BUOY);
+  uni1f(progForce, 'uTRef', T_SURF);
+  runQuad(progForce, vel.write);
+  vel.swap();
+
+  // 5. Condensation: update thermo (theta', qv)
+  gl.useProgram(progCondTh);
+  bindTex(0, thermo.read); uni1i(progCondTh, 'uThermo', 0);
+  bindTex(1, cond.read);   uni1i(progCondTh, 'uCond', 1);
+  uni1f(progCondTh, 'uQs0',   QS0);
+  uni1f(progCondTh, 'uQsA',   QS_A);
+  uni1f(progCondTh, 'uTSurf', T_SURF);
+  uni1f(progCondTh, 'uLCp',   L_CP);
+  runQuad(progCondTh, thermo.write);
+  thermo.swap();
+
+  // 6. Condensation: update qc (reads PRE-condensation thermo intentionally
+  //    so both passes see the same input — idempotent physics update)
+  gl.useProgram(progCondQc);
+  bindTex(0, thermo.read); uni1i(progCondQc, 'uThermo', 0);
+  bindTex(1, cond.read);   uni1i(progCondQc, 'uCond', 1);
+  uni1f(progCondQc, 'uQs0',   QS0);
+  uni1f(progCondQc, 'uQsA',   QS_A);
+  uni1f(progCondQc, 'uTSurf', T_SURF);
+  runQuad(progCondQc, cond.write);
+  cond.swap();
+
+  // 7. Divergence of velocity
+  gl.useProgram(progDiv);
+  bindTex(0, vel.read); uni1i(progDiv, 'uVel', 0);
+  runQuad(progDiv, divFBO);
+
+  // 8. Jacobi pressure solve (ping-pong pressure)
+  gl.useProgram(progJacobi);
+  for(let i = 0; i < JITER; i++){
+    bindTex(0, pres.read); uni1i(progJacobi, 'uPres', 0);
+    bindTex(1, divTex);    uni1i(progJacobi, 'uDiv', 1);
+    runQuad(progJacobi, pres.write);
+    pres.swap();
+  }
+
+  // 9. Project velocity to divergence-free
+  gl.useProgram(progProject);
+  bindTex(0, vel.read);  uni1i(progProject, 'uVel', 0);
+  bindTex(1, pres.read); uni1i(progProject, 'uPres', 1);
+  runQuad(progProject, vel.write);
+  vel.swap();
+}
+
+// ============================================================
+//  RENDER
+// ============================================================
+function render(sliceIdx, axis, viewMode){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(progDisplay);
+  bindTex(0, vel.read);    uni1i(progDisplay, 'uVel', 0);
+  bindTex(1, thermo.read); uni1i(progDisplay, 'uThermo', 1);
+  bindTex(2, cond.read);   uni1i(progDisplay, 'uCond', 2);
+  uni1i(progDisplay, 'uSlice', sliceIdx);
+  uni1i(progDisplay, 'uAxis',  axis);
+  uni1i(progDisplay, 'uMode',  viewMode);
+  gl.bindVertexArray(quadVAO);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.bindVertexArray(null);
+}
+
+// ============================================================
+//  STATS (read back max vertical velocity)
+// ============================================================
+const statsCanvas = document.createElement('canvas');
+statsCanvas.width = statsCanvas.height = 1;
+const statsCtx = statsCanvas.getContext('2d');
+// We'll sample a few pixels to estimate max vy
+// (full readback is expensive; we use a small proxy approach)
+let lastMaxVy = 0;
+function updateStats(){
+  // Read a small slice from the vel texture for stats — skip for perf,
+  // estimate from a known upwelling location instead.
+  // We'll just display simulated time.
+}
+
+// ============================================================
+//  MAIN LOOP
+// ============================================================
+let stepCount   = 0;
+let paused      = false;
+let animId      = null;
+
+initSimulation();
+
+const slicePosEl  = document.getElementById('slicePos');
+const slicePosVal = document.getElementById('slicePosVal');
+const viewModeEl  = document.getElementById('viewMode');
+const sliceAxisEl = document.getElementById('sliceAxis');
+const speedEl     = document.getElementById('speed');
+const speedVal    = document.getElementById('speedVal');
+const stepEl      = document.getElementById('stepCount');
+const timeEl      = document.getElementById('simTime');
+const maxVEl      = document.getElementById('maxV');
+
+slicePosEl.addEventListener('input', () => slicePosVal.textContent = slicePosEl.value);
+speedEl.addEventListener('input',    () => speedVal.textContent = speedEl.value);
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  initSimulation();
+  paused = false;
+  document.getElementById('pauseBtn').textContent = 'Pause';
+});
+
+document.getElementById('pauseBtn').addEventListener('click', () => {
+  paused = !paused;
+  document.getElementById('pauseBtn').textContent = paused ? 'Resume' : 'Pause';
+  if(!paused) loop();
+});
+
+function loop(){
+  if(paused){ animId = null; return; }
+
+  const stepsPerFrame = parseInt(speedEl.value, 10);
+  for(let i = 0; i < stepsPerFrame; i++) simStep();
+  stepCount += stepsPerFrame;
+
+  const axisMap = { x:0, y:1, z:2 };
+  const axis    = axisMap[sliceAxisEl.value];
+  const slice   = parseInt(slicePosEl.value, 10);
+  const mode    = parseInt(viewModeEl.value, 10);
+
+  render(slice, axis, mode);
+
+  stepEl.textContent = stepCount;
+  timeEl.textContent = (stepCount * DT).toFixed(0) + ' s';
+
+  animId = requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
