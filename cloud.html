@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cumulus Cloud — 3D Fluid Simulation</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0a0a1a;
+  color: #ccc;
+  font-family: monospace;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 10px;
+  gap: 7px;
+}
+h1 { font-size: 13px; color: #8af; letter-spacing: 0.05em; }
+canvas { display: block; image-rendering: pixelated; }
+
+/* ── top viewer controls ── */
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  font-size: 11px;
+  color: #aaa;
+}
+label { display: flex; align-items: center; gap: 4px; }
+input[type=range] { width: 80px; accent-color: #8af; }
+select, button {
+  background: #1a1a2e; color: #ccc;
+  border: 1px solid #334; padding: 2px 8px;
+  cursor: pointer; font-family: monospace; font-size: 11px;
+}
+button:hover { background: #223; }
+
+/* ── physics parameter panel ── */
+#params {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px 16px;
+  padding: 8px 12px;
+  border: 1px solid #223;
+  border-radius: 4px;
+  width: 512px;
+  font-size: 10px;
+}
+.pgroup h3 {
+  font-size: 9px; color: #56f; letter-spacing: 0.08em;
+  text-transform: uppercase; margin-bottom: 4px; border-bottom: 1px solid #223; padding-bottom: 2px;
+}
+.prow {
+  display: flex; align-items: center;
+  justify-content: space-between; gap: 4px; margin-bottom: 3px;
+}
+.pname { flex: 1; color: #99b; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pval  { width: 52px; text-align: right; color: #7df; flex-shrink: 0; }
+input[type=range].ps { width: 70px; accent-color: #56f; flex-shrink: 0; }
+
+#info { font-size: 10px; color: #446; }
+#err  { color: #f88; font-size: 12px; padding: 20px; }
+</style>
+</head>
+<body>
+<h1>Cumulus Cloud — 3D Fluid Simulation (2D Slice View)</h1>
+
+<div id="controls">
+  <label>Axis:
+    <select id="sliceAxis">
+      <option value="y">Y-horizontal</option>
+      <option value="z" selected>Z-vertical</option>
+      <option value="x">X-vertical</option>
+    </select>
+  </label>
+  <label>Slice: <input type="range" id="slicePos" min="0" max="63" value="32"> <span id="slicePosVal">32</span></label>
+  <label>View:
+    <select id="viewMode">
+      <option value="0">Condensate (cloud)</option>
+      <option value="1">Updraft (vy)</option>
+      <option value="2">Temp anomaly</option>
+      <option value="3">Water vapour</option>
+      <option value="4">Speed</option>
+    </select>
+  </label>
+  <label>Speed: <input type="range" id="speed" min="0" max="6" value="1"> <span id="speedVal">¼ step/frame</span></label>
+  <button id="resetBtn">Reset</button>
+  <button id="pauseBtn">Pause</button>
+</div>
+
+<canvas id="canvas" width="512" height="512"></canvas>
+
+<!-- Physics parameter panel -->
+<div id="params">
+
+  <div class="pgroup">
+    <h3>Atmosphere</h3>
+    <div class="prow">
+      <span class="pname" title="Environmental temperature lapse rate. Below moist-adiabatic (~6 K/km) = stable. Above dry-adiabatic (9.8) = unconditionally unstable.">Lapse rate</span>
+      <input type="range" class="ps" id="pLapse" min="4.0" max="10.0" step="0.1" value="6.5">
+      <span class="pval" id="vLapse">6.5 K/km</span>
+    </div>
+    <div class="prow">
+      <span class="pname" title="Height at which a stable inversion caps convection, representing the tropopause or a trade-wind inversion.">Tropopause</span>
+      <input type="range" class="ps" id="pTropo" min="0.25" max="1.0" step="0.01" value="0.90">
+      <span class="pval" id="vTropo">900 m</span>
+    </div>
+    <div class="prow">
+      <span class="pname" title="Extra multiplier on the buoyancy force — a proxy for CAPE beyond what the lapse rate already provides (e.g. accounting for moisture-laden thermals).">CAPE boost</span>
+      <input type="range" class="ps" id="pCape" min="0.1" max="3.0" step="0.05" value="1.0">
+      <span class="pval" id="vCape">1.0 ×</span>
+    </div>
+  </div>
+
+  <div class="pgroup">
+    <h3>Surface</h3>
+    <div class="prow">
+      <span class="pname" title="Solar irradiance absorbed at the surface, converted to a sensible heat flux warming the lowest model layers each step.">Solar irradiance</span>
+      <input type="range" class="ps" id="pSolar" min="0" max="1200" step="10" value="400">
+      <span class="pval" id="vSolar">400 W/m²</span>
+    </div>
+    <div class="prow">
+      <span class="pname" title="Relative humidity of air entering from the surface. Higher RH lowers the lifting condensation level and increases cloud water.">Surface RH</span>
+      <input type="range" class="ps" id="pRH" min="40" max="100" step="1" value="87">
+      <span class="pval" id="vRH">87 %</span>
+    </div>
+  </div>
+
+  <div class="pgroup">
+    <h3>Dynamics</h3>
+    <div class="prow">
+      <span class="pname" title="Vertical wind shear: horizontal wind speed increases linearly with height. Tilts updrafts and can promote organised convection or inhibit it.">Wind shear</span>
+      <input type="range" class="ps" id="pShear" min="0" max="20" step="0.5" value="0">
+      <span class="pval" id="vShear">0 m/s/km</span>
+    </div>
+    <div class="prow">
+      <span class="pname" title="Advective dissipation per step. Lower values diffuse scalars faster (smoother, more stable). Values near 1.0 preserve fine structures.">Diffusion</span>
+      <input type="range" class="ps" id="pDiss" min="0.980" max="1.000" step="0.001" value="0.9995">
+      <span class="pval" id="vDiss">0.9995</span>
+    </div>
+  </div>
+
+</div>
+
+<div id="info">Step: <span id="stepCount">0</span> &nbsp;|&nbsp; Sim time: <span id="simTime">0 s</span> &nbsp;|&nbsp; <span id="capeTxt">CAPE ≈ – J/kg</span></div>
+<div id="err"></div>
+
+<script>
+'use strict';
+
+// ============================================================
+//  FIXED GRID / PHYSICAL CONSTANTS
+// ============================================================
+const N      = 64;
+const SPD    = 8;
+const TEX    = N * SPD;   // 512
+
+const DOMAIN = 1000.0;    // [m]
+const DX     = DOMAIN / N;
+const DT     = 0.5;       // [s]
+const G      = 9.81;
+const T_SURF = 300.0;     // [K]
+const L_CP   = 2488.0;    // L_v / c_p  [K per kg/kg]
+const QS0    = 0.015;     // surface saturation mixing ratio  [kg/kg]
+const QS_A   = 0.073;     // Clausius-Clapeyron coefficient  [1/K]
+
+// Base (unscaled) buoyancy coefficient  [voxel-lengths / step² per K/K]
+const BUOY_BASE = G * DT * DT / DX;  // ≈ 0.0202
+
+// Velocity clamp  [voxel-lengths / step]
+const VMAX = 4.0;
+
+// Jacobi iterations
+const JITER = 20;
+
+// ============================================================
+//  TUNABLE PARAMETERS  (adjusted via sliders at runtime)
+// ============================================================
+const params = {
+  lapseRate:  6.5,    // K/km  — environmental temperature lapse rate
+  tropoFrac:  0.90,   // [0-1] — tropopause height as fraction of domain
+  capeBoost:  1.0,    // ×     — extra buoyancy multiplier
+  solarWm2:   400,    // W/m²  — surface solar heating
+  surfaceRH:  0.87,   // [0-1] — surface relative humidity
+  windShear:  0.0,    // m/s/km
+  dissipation: 0.9995,
+};
+
+// ============================================================
+//  SHADER SOURCES
+// ============================================================
+const VS = `#version 300 es
+in vec2 aPos; out vec2 vUv;
+void main(){ vUv = aPos*0.5+0.5; gl_Position = vec4(aPos,0,1); }`;
+
+const UTIL = `
+#define N    64
+#define SPD  8
+#define fN   64.0
+#define fSPD 8.0
+
+ivec2 v2t(int ix, int iy, int iz){
+  return ivec2(iz%SPD*N + ix, iz/SPD*N + iy);
+}
+vec4 fetch(sampler2D t, int ix, int iy, int iz){
+  ix=((ix%N)+N)%N; iy=clamp(iy,0,N-1); iz=((iz%N)+N)%N;
+  return texelFetch(t, v2t(ix,iy,iz), 0);
+}
+vec4 trilin(sampler2D t, vec3 pos){
+  pos.x=fract(pos.x+100.0); pos.y=clamp(pos.y,0.0,1.0); pos.z=fract(pos.z+100.0);
+  vec3 p=pos*fN-0.5; ivec3 p0=ivec3(floor(p)); vec3 f=p-vec3(p0);
+  vec4 c000=fetch(t,p0.x,  p0.y,  p0.z),   c100=fetch(t,p0.x+1,p0.y,  p0.z);
+  vec4 c010=fetch(t,p0.x,  p0.y+1,p0.z),   c110=fetch(t,p0.x+1,p0.y+1,p0.z);
+  vec4 c001=fetch(t,p0.x,  p0.y,  p0.z+1), c101=fetch(t,p0.x+1,p0.y,  p0.z+1);
+  vec4 c011=fetch(t,p0.x,  p0.y+1,p0.z+1), c111=fetch(t,p0.x+1,p0.y+1,p0.z+1);
+  vec4 c0=mix(mix(c000,c100,f.x),mix(c010,c110,f.x),f.y);
+  vec4 c1=mix(mix(c001,c101,f.x),mix(c011,c111,f.x),f.y);
+  return mix(c0,c1,f.z);
+}
+ivec3 frag2vox(){ ivec2 tc=ivec2(gl_FragCoord.xy); return ivec3(tc.x%N,tc.y%N,(tc.y/N)*SPD+tc.x/N); }
+vec3  vox2pos(ivec3 v){ return (vec3(v)+0.5)/fN; }
+`;
+
+// ---- advection ----
+const FS_ADVECT = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+` + UTIL + `
+uniform sampler2D uVel; uniform sampler2D uField;
+uniform float uDt; uniform float uDiss;
+out vec4 outColor;
+void main(){
+  ivec3 v=frag2vox(); if(v.z>=N){outColor=vec4(0);return;}
+  vec3 pos=vox2pos(v);
+  vec3 vel=trilin(uVel,pos).xyz;
+  outColor = uDiss * trilin(uField, pos - uDt * vel / fN);
+}`;
+
+// ---- buoyancy + wind shear + tropopause ----
+const FS_FORCE = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+` + UTIL + `
+uniform sampler2D uVel; uniform sampler2D uThermo; uniform sampler2D uCond;
+uniform float uBuoy;       // G*dt²/dx * capeBoost
+uniform float uTRef;       // reference temperature [K]
+uniform float uWindShear;  // horizontal vel increment per voxel height per step
+uniform float uTropoFrac;  // tropopause height fraction [0-1]
+out vec4 outColor;
+void main(){
+  ivec3 v=frag2vox(); if(v.z>=N){outColor=vec4(0);return;}
+  vec4  vel   = texelFetch(uVel,    v2t(v.x,v.y,v.z), 0);
+  float theta = texelFetch(uThermo, v2t(v.x,v.y,v.z), 0).r;
+  float qc    = texelFetch(uCond,   v2t(v.x,v.y,v.z), 0).r;
+  float y_frac = (float(v.y)+0.5)/fN;
+
+  // Buoyancy: g*(θ'/θref - qc)
+  float buoy = uBuoy * (theta / uTRef - qc);
+
+  // Tropopause inversion: increasingly negative buoyancy above the lid
+  if(y_frac > uTropoFrac && uTropoFrac < 0.98){
+    float above = (y_frac - uTropoFrac) / max(1.0 - uTropoFrac, 0.02);
+    buoy -= above * uBuoy * 4.0;          // strong stable layer
+    vel.y *= max(0.0, 1.0 - above * 0.6); // damp vertical motion above tropo
+  }
+
+  vel.y += buoy;
+
+  // Wind shear: uniform dU/dz profile (zero mean so net momentum is conserved)
+  vel.x += uWindShear * (y_frac - 0.5);
+
+  vel.xyz = clamp(vel.xyz, -${VMAX.toFixed(1)}, ${VMAX.toFixed(1)});
+  outColor = vel;
+}`;
+
+// ---- condensation: update (θ', qv) ----
+const FS_COND_THERMO = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+` + UTIL + `
+uniform sampler2D uThermo; uniform sampler2D uCond;
+uniform float uQs0; uniform float uQsA; uniform float uTSurf;
+uniform float uLCp;
+uniform float uGammaScale; // total temp drop over domain [K]  = lapseRate[K/km]*DOMAIN[m]/1000
+out vec4 outColor;
+void main(){
+  ivec3 v=frag2vox(); if(v.z>=N){outColor=vec4(0);return;}
+  vec2  th=texelFetch(uThermo,v2t(v.x,v.y,v.z),0).rg;
+  float qc=texelFetch(uCond,  v2t(v.x,v.y,v.z),0).r;
+  float theta=th.r, qv=th.g;
+  float y_frac=(float(v.y)+0.5)/fN;
+  float T_env   = uTSurf - uGammaScale * y_frac;
+  float T_parcel = T_env + theta;
+  float qs = max(uQs0 * exp(uQsA * (T_parcel - uTSurf)), 1e-5);
+  // Newton saturation step: r = excess / (1 + QS_A·L_CP·qs).
+  // excess*0.5 oscillates when L_CP·QS_A·qs > 1 (~2.7 at surface) because
+  // latent heating raises qs above qv each step, triggering immediate evaporation.
+  float excess = qv - qs;
+  float denom  = 1.0 + uQsA * uLCp * qs;
+  if(excess > 0.0){
+    float r = excess / denom; qv -= r; theta += uLCp * r;
+  } else if(qc > 0.0){
+    float r = min(qc, -excess / denom); qv += r; theta -= uLCp * r;
+  }
+  outColor = vec4(theta, max(qv,0.0), 0.0, 0.0);
+}`;
+
+// ---- condensation: update qc ----
+const FS_COND_QC = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+` + UTIL + `
+uniform sampler2D uThermo; uniform sampler2D uCond;
+uniform float uQs0; uniform float uQsA; uniform float uTSurf;
+uniform float uGammaScale; uniform float uLCp;
+out vec4 outColor;
+void main(){
+  ivec3 v=frag2vox(); if(v.z>=N){outColor=vec4(0);return;}
+  vec2  th=texelFetch(uThermo,v2t(v.x,v.y,v.z),0).rg;
+  float qc=texelFetch(uCond,  v2t(v.x,v.y,v.z),0).r;
+  float theta=th.r, qv=th.g;
+  float y_frac=(float(v.y)+0.5)/fN;
+  float T_parcel = (uTSurf - uGammaScale*y_frac) + theta;
+  float qs = max(uQs0 * exp(uQsA * (T_parcel - uTSurf)), 1e-5);
+  float excess = qv - qs;
+  float denom  = 1.0 + uQsA * uLCp * qs;
+  if(excess > 0.0)      qc += excess / denom;
+  else if(qc > 0.0)     qc -= min(qc, -excess / denom);
+  outColor = vec4(max(qc,0.0), 0.0, 0.0, 0.0);
+}`;
+
+// ---- surface heating / moistening (runs after condensation each step) ----
+// Injects a sensible heat flux and maintains surface qv from evaporation.
+const FS_SURFACE = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+` + UTIL + `
+uniform sampler2D uThermo;
+uniform float uHeatRate;   // K/step added at y=0, linearly decaying to y=3
+uniform float uSurfaceQv;  // minimum qv maintained at y=0 [kg/kg]
+out vec4 outColor;
+void main(){
+  ivec3 v=frag2vox(); if(v.z>=N){outColor=vec4(0);return;}
+  vec4 th=texelFetch(uThermo, v2t(v.x,v.y,v.z), 0);
+  if(v.y < 4){
+    float w = 1.0 - float(v.y)/4.0;   // 1.0 at y=0, 0.0 at y=4
+    th.r += uHeatRate * w;
+    th.g  = max(th.g, uSurfaceQv * w); // maintain minimum surface moisture
+  }
+  outColor = th;
+}`;
+
+// ---- divergence ----
+const FS_DIV = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+` + UTIL + `
+uniform sampler2D uVel; out vec4 outColor;
+void main(){
+  ivec3 v=frag2vox(); if(v.z>=N){outColor=vec4(0);return;}
+  float vxP=fetch(uVel,v.x+1,v.y,  v.z).x, vxM=fetch(uVel,v.x-1,v.y,  v.z).x;
+  float vyP=fetch(uVel,v.x,  v.y+1,v.z).y, vyM=fetch(uVel,v.x,  v.y-1,v.z).y;
+  float vzP=fetch(uVel,v.x,  v.y,  v.z+1).z,vzM=fetch(uVel,v.x,  v.y,  v.z-1).z;
+  if(v.y==0)   vyM=-vyP;
+  if(v.y==N-1) vyP=-vyM;
+  outColor=vec4(0.5*(vxP-vxM+vyP-vyM+vzP-vzM),0,0,0);
+}`;
+
+// ---- Jacobi pressure ----
+const FS_JACOBI = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+` + UTIL + `
+uniform sampler2D uPres; uniform sampler2D uDiv; out vec4 outColor;
+void main(){
+  ivec3 v=frag2vox(); if(v.z>=N){outColor=vec4(0);return;}
+  float pxP=fetch(uPres,v.x+1,v.y,  v.z).r, pxM=fetch(uPres,v.x-1,v.y,  v.z).r;
+  float pyP=fetch(uPres,v.x,  v.y+1,v.z).r, pyM=fetch(uPres,v.x,  v.y-1,v.z).r;
+  float pzP=fetch(uPres,v.x,  v.y,  v.z+1).r,pzM=fetch(uPres,v.x,  v.y,  v.z-1).r;
+  if(v.y==0)   pyM=pyP;
+  if(v.y==N-1) pyP=pyM;
+  float div=texelFetch(uDiv,v2t(v.x,v.y,v.z),0).r;
+  outColor=vec4((pxP+pxM+pyP+pyM+pzP+pzM-div)/6.0,0,0,0);
+}`;
+
+// ---- gradient subtraction ----
+const FS_PROJECT = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+` + UTIL + `
+uniform sampler2D uVel; uniform sampler2D uPres; out vec4 outColor;
+void main(){
+  ivec3 v=frag2vox(); if(v.z>=N){outColor=vec4(0);return;}
+  vec3 vel=texelFetch(uVel,v2t(v.x,v.y,v.z),0).xyz;
+  float pxP=fetch(uPres,v.x+1,v.y,  v.z).r, pxM=fetch(uPres,v.x-1,v.y,  v.z).r;
+  float pyP=fetch(uPres,v.x,  v.y+1,v.z).r, pyM=fetch(uPres,v.x,  v.y-1,v.z).r;
+  float pzP=fetch(uPres,v.x,  v.y,  v.z+1).r,pzM=fetch(uPres,v.x,  v.y,  v.z-1).r;
+  if(v.y==0)   pyM=pyP;
+  if(v.y==N-1) pyP=pyM;
+  vel.x-=0.5*(pxP-pxM); vel.y-=0.5*(pyP-pyM); vel.z-=0.5*(pzP-pzM);
+  if(v.y==0||v.y==N-1) vel.y=0.0;
+  outColor=vec4(vel,0);
+}`;
+
+// ---- 2D slice display ----
+const FS_DISPLAY = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+uniform sampler2D uVel; uniform sampler2D uThermo; uniform sampler2D uCond;
+uniform int uSlice; uniform int uAxis; uniform int uMode;
+in vec2 vUv; out vec4 outColor;
+const int N=64; const int SPD=8;
+vec4 fAt(sampler2D t,int ix,int iy,int iz){
+  ix=clamp(ix,0,N-1);iy=clamp(iy,0,N-1);iz=clamp(iz,0,N-1);
+  return texelFetch(t,ivec2(iz%SPD*N+ix,iz/SPD*N+iy),0);
+}
+ivec3 uvToVox(vec2 uv,int axis,int slc){
+  int a=int(uv.x*float(N)), b=int(uv.y*float(N));
+  a=clamp(a,0,N-1); b=clamp(b,0,N-1);
+  if(axis==0) return ivec3(slc,b,a);
+  if(axis==1) return ivec3(a,slc,b);
+             return ivec3(a,b,slc);
+}
+vec3 coldHot(float t){
+  t=clamp(t,0.0,1.0);
+  vec3 cold=vec3(0.1,0.3,0.9), mid=vec3(0.95,0.95,0.95), hot=vec3(0.9,0.2,0.1);
+  return t<0.5?mix(cold,mid,t*2.0):mix(mid,hot,(t-0.5)*2.0);
+}
+vec3 cloudGrad(float d){
+  d=clamp(d,0.0,1.0);
+  vec3 sky=vec3(0.38,0.60,0.92), thin=vec3(0.75,0.82,0.93), thick=vec3(0.98,0.98,1.0);
+  return d<0.3?mix(sky,thin,d/0.3):mix(thin,thick,(d-0.3)/0.7);
+}
+vec3 velGrad(float t){
+  return mix(vec3(0.05,0.05,0.15),vec3(0.1,1.0,0.4),clamp(t,0.0,1.0));
+}
+void main(){
+  ivec3 vox=uvToVox(vUv,uAxis,uSlice);
+  int ix=vox.x, iy=vox.y, iz=vox.z;
+  if(uMode==0){
+    // Exponential sensitivity: qc=0.0002 → 0.63, qc=0.001 → 0.99
+    float qc = fAt(uCond,ix,iy,iz).r;
+    outColor=vec4(cloudGrad(1.0 - exp(-qc * 5000.0)),1);
+  } else if(uMode==1){
+    float vy=fAt(uVel,ix,iy,iz).y * ${(DX/DT).toFixed(3)};
+    outColor=vec4(coldHot(vy*0.05+0.5),1);
+  } else if(uMode==2){
+    outColor=vec4(coldHot(fAt(uThermo,ix,iy,iz).r*0.12+0.5),1);
+  } else if(uMode==3){
+    outColor=vec4(velGrad(fAt(uThermo,ix,iy,iz).g*80.0),1);
+  } else {
+    outColor=vec4(velGrad(length(fAt(uVel,ix,iy,iz).xyz)*${(DX/DT).toFixed(3)}*0.04),1);
+  }
+}`;
+
+// ============================================================
+//  WebGL SETUP
+// ============================================================
+const canvas = document.getElementById('canvas');
+const errDiv  = document.getElementById('err');
+const gl = canvas.getContext('webgl2');
+if(!gl){ errDiv.textContent='WebGL2 not supported.'; throw new Error('no webgl2'); }
+if(!gl.getExtension('EXT_color_buffer_float')){ errDiv.textContent='EXT_color_buffer_float missing.'; throw new Error(); }
+gl.getExtension('OES_texture_float_linear');
+
+function compileShader(type, src){
+  const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){
+    const log=gl.getShaderInfoLog(s);
+    errDiv.textContent='Shader error: '+log; console.error(log,src); throw new Error('shader');
+  }
+  return s;
+}
+function makeProgram(fsSrc){
+  const vs=compileShader(gl.VERTEX_SHADER,VS), fs=compileShader(gl.FRAGMENT_SHADER,fsSrc);
+  const p=gl.createProgram(); gl.attachShader(p,vs); gl.attachShader(p,fs); gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS)){ errDiv.textContent='Link error: '+gl.getProgramInfoLog(p); throw new Error(); }
+  gl.deleteShader(vs); gl.deleteShader(fs); return p;
+}
+
+const progAdvect  = makeProgram(FS_ADVECT);
+const progForce   = makeProgram(FS_FORCE);
+const progCondTh  = makeProgram(FS_COND_THERMO);
+const progCondQc  = makeProgram(FS_COND_QC);
+const progSurface = makeProgram(FS_SURFACE);
+const progDiv     = makeProgram(FS_DIV);
+const progJacobi  = makeProgram(FS_JACOBI);
+const progProject = makeProgram(FS_PROJECT);
+const progDisplay = makeProgram(FS_DISPLAY);
+
+const allProgs = [progAdvect,progForce,progCondTh,progCondQc,progSurface,
+                  progDiv,progJacobi,progProject,progDisplay];
+
+const quadVAO = gl.createVertexArray();
+gl.bindVertexArray(quadVAO);
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+allProgs.forEach(p => {
+  const loc=gl.getAttribLocation(p,'aPos');
+  if(loc>=0){ gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0); }
+});
+gl.bindVertexArray(null);
+
+// ---- texture / FBO helpers ----
+function makeTexRGBA(data){
+  const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,TEX,TEX,0,gl.RGBA,gl.FLOAT,data||null);
+  return t;
+}
+function makeTexR(data){
+  const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.R16F,TEX,TEX,0,gl.RED,gl.FLOAT,data||null);
+  return t;
+}
+function makeFBO(tex){
+  const fbo=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,tex,0);
+  const st=gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+  if(st!==gl.FRAMEBUFFER_COMPLETE){ errDiv.textContent='FBO incomplete: '+st; throw new Error(); }
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null); return fbo;
+}
+
+class PingPong {
+  constructor(mkTex){ this.tex=[mkTex(),mkTex()]; this.fbo=[makeFBO(this.tex[0]),makeFBO(this.tex[1])]; this.cur=0; }
+  get read(){ return this.tex[this.cur]; }
+  get write(){ return this.fbo[1-this.cur]; }
+  swap(){ this.cur=1-this.cur; }
+}
+
+const vel    = new PingPong(() => makeTexRGBA(null));
+const thermo = new PingPong(() => makeTexRGBA(null));
+const cond   = new PingPong(() => makeTexR(null));
+const pres   = new PingPong(() => makeTexR(null));
+const divTex = makeTexR(null);
+const divFBO = makeFBO(divTex);
+
+// ============================================================
+//  INITIAL CONDITIONS
+// ============================================================
+function buildIC(){
+  const thermoData = new Float32Array(TEX * TEX * 4);
+  const gamma = params.lapseRate * 0.001; // K/m
+
+  for(let iz=0;iz<N;iz++){
+    const sc=iz%SPD, sr=Math.floor(iz/SPD);
+    for(let iy=0;iy<N;iy++){
+      for(let ix=0;ix<N;ix++){
+        const tx=sc*N+ix, ty=sr*N+iy;
+        const i4=(ty*TEX+tx)*4;
+        const yf=(iy+0.5)/N;
+        const T_env=T_SURF - gamma*yf*DOMAIN;
+        const qs_env=QS0*Math.exp(QS_A*(T_env-T_SURF));
+        const qv_bg=params.surfaceRH*qs_env;
+
+        // Warm moist bubble near surface centre
+        const bx=(ix-N/2)/7, by=(iy-N/8)/7, bz=(iz-N/2)/7;
+        const bump=Math.exp(-(bx*bx+by*by+bz*bz)*0.7);
+
+        thermoData[i4+0] = 3.0*bump;                          // +3 K thermal
+        thermoData[i4+1] = Math.max(qv_bg + 0.012*bump, 0); // extra moisture → ensures supersaturation
+      }
+    }
+  }
+  return thermoData;
+}
+
+function initSimulation(){
+  const thermoData=buildIC();
+  for(let i=0;i<2;i++){
+    gl.bindTexture(gl.TEXTURE_2D,thermo.tex[i]);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,TEX,TEX,0,gl.RGBA,gl.FLOAT,thermoData);
+    gl.bindTexture(gl.TEXTURE_2D,vel.tex[i]);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,TEX,TEX,0,gl.RGBA,gl.FLOAT,null);
+    gl.bindTexture(gl.TEXTURE_2D,cond.tex[i]);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.R16F,TEX,TEX,0,gl.RED,gl.FLOAT,null);
+    gl.bindTexture(gl.TEXTURE_2D,pres.tex[i]);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.R16F,TEX,TEX,0,gl.RED,gl.FLOAT,null);
+  }
+  stepCount=0;
+}
+
+// ============================================================
+//  SIMULATION STEP
+// ============================================================
+function bindTex(unit,tex){ gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,tex); }
+function runQuad(prog,fbo){
+  gl.bindFramebuffer(gl.FRAMEBUFFER,fbo); gl.viewport(0,0,TEX,TEX);
+  gl.useProgram(prog); gl.bindVertexArray(quadVAO);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4); gl.bindVertexArray(null);
+}
+function u1i(p,n,v){ gl.uniform1i(gl.getUniformLocation(p,n),v); }
+function u1f(p,n,v){ gl.uniform1f(gl.getUniformLocation(p,n),v); }
+
+// Derived uniforms computed from params each step
+function gammaScale(){ return params.lapseRate * 0.001 * DOMAIN; }  // total K drop over domain
+function heatRate(){
+  // Convert W/m² to K/step: Q = W/m², dT/dt = Q/(rho*cp*dz) [K/s], dT/step = dT/dt * DT
+  return params.solarWm2 / (1.2 * 1005 * DX) * DT;
+}
+function surfaceQv(){
+  return params.surfaceRH * QS0; // approximate: use surface-level qs
+}
+function windShearUniform(){
+  // physical: m/s/km.  convert to voxel-lengths/step per voxel (y goes 0..1)
+  // shear [m/s per m] = params.windShear/1000,  × DT/DX = voxel/step per voxel
+  return params.windShear / 1000.0 * DT;
+}
+
+function simStep(){
+  const diss = params.dissipation;
+  const gs   = gammaScale();
+
+  // 1. Advect velocity
+  gl.useProgram(progAdvect);
+  bindTex(0,vel.read);   u1i(progAdvect,'uVel',0);
+  bindTex(1,vel.read);   u1i(progAdvect,'uField',1);
+  u1f(progAdvect,'uDt',1.0); u1f(progAdvect,'uDiss',diss);
+  runQuad(progAdvect,vel.write); vel.swap();
+
+  // 2. Advect thermo
+  bindTex(0,vel.read);    u1i(progAdvect,'uVel',0);
+  bindTex(1,thermo.read); u1i(progAdvect,'uField',1);
+  u1f(progAdvect,'uDt',1.0); u1f(progAdvect,'uDiss',diss+0.0003);
+  runQuad(progAdvect,thermo.write); thermo.swap();
+
+  // 3. Advect condensate
+  bindTex(0,vel.read);  u1i(progAdvect,'uVel',0);
+  bindTex(1,cond.read); u1i(progAdvect,'uField',1);
+  u1f(progAdvect,'uDt',1.0); u1f(progAdvect,'uDiss',diss);
+  runQuad(progAdvect,cond.write); cond.swap();
+
+  // 4. Apply buoyancy + shear + tropopause
+  gl.useProgram(progForce);
+  bindTex(0,vel.read);    u1i(progForce,'uVel',0);
+  bindTex(1,thermo.read); u1i(progForce,'uThermo',1);
+  bindTex(2,cond.read);   u1i(progForce,'uCond',2);
+  u1f(progForce,'uBuoy',       BUOY_BASE * params.capeBoost);
+  u1f(progForce,'uTRef',       T_SURF);
+  u1f(progForce,'uWindShear',  windShearUniform());
+  u1f(progForce,'uTropoFrac',  params.tropoFrac);
+  runQuad(progForce,vel.write); vel.swap();
+
+  // 5. Condensation: update (θ', qv)
+  // Save the pre-condensation thermo texture before the swap — step 6 must
+  // read the same input state so both passes compute a consistent saturation.
+  const thermoPreCond = thermo.read;
+  gl.useProgram(progCondTh);
+  bindTex(0, thermoPreCond); u1i(progCondTh,'uThermo',0);
+  bindTex(1,cond.read);      u1i(progCondTh,'uCond',1);
+  u1f(progCondTh,'uQs0',QS0); u1f(progCondTh,'uQsA',QS_A);
+  u1f(progCondTh,'uTSurf',T_SURF); u1f(progCondTh,'uLCp',L_CP);
+  u1f(progCondTh,'uGammaScale',gs);
+  runQuad(progCondTh,thermo.write); thermo.swap();
+
+  // 6. Condensation: update qc — use thermoPreCond (pre-condensation), NOT
+  //    thermo.read which now points to the post-condensation texture after swap.
+  gl.useProgram(progCondQc);
+  bindTex(0, thermoPreCond); u1i(progCondQc,'uThermo',0);
+  bindTex(1,cond.read);      u1i(progCondQc,'uCond',1);
+  u1f(progCondQc,'uQs0',QS0); u1f(progCondQc,'uQsA',QS_A);
+  u1f(progCondQc,'uTSurf',T_SURF); u1f(progCondQc,'uGammaScale',gs);
+  u1f(progCondQc,'uLCp',L_CP);
+  runQuad(progCondQc,cond.write); cond.swap();
+
+  // 7. Surface heating + moisture injection
+  gl.useProgram(progSurface);
+  bindTex(0,thermo.read); u1i(progSurface,'uThermo',0);
+  u1f(progSurface,'uHeatRate',  heatRate());
+  u1f(progSurface,'uSurfaceQv', surfaceQv());
+  runQuad(progSurface,thermo.write); thermo.swap();
+
+  // 8. Divergence
+  gl.useProgram(progDiv);
+  bindTex(0,vel.read); u1i(progDiv,'uVel',0);
+  runQuad(progDiv,divFBO);
+
+  // 9. Jacobi pressure
+  gl.useProgram(progJacobi);
+  for(let i=0;i<JITER;i++){
+    bindTex(0,pres.read); u1i(progJacobi,'uPres',0);
+    bindTex(1,divTex);    u1i(progJacobi,'uDiv',1);
+    runQuad(progJacobi,pres.write); pres.swap();
+  }
+
+  // 10. Project
+  gl.useProgram(progProject);
+  bindTex(0,vel.read);  u1i(progProject,'uVel',0);
+  bindTex(1,pres.read); u1i(progProject,'uPres',1);
+  runQuad(progProject,vel.write); vel.swap();
+}
+
+// ============================================================
+//  RENDER
+// ============================================================
+function render(sliceIdx, axis, viewMode){
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  gl.viewport(0,0,canvas.width,canvas.height);
+  gl.useProgram(progDisplay);
+  bindTex(0,vel.read);    u1i(progDisplay,'uVel',0);
+  bindTex(1,thermo.read); u1i(progDisplay,'uThermo',1);
+  bindTex(2,cond.read);   u1i(progDisplay,'uCond',2);
+  u1i(progDisplay,'uSlice',sliceIdx);
+  u1i(progDisplay,'uAxis', axis);
+  u1i(progDisplay,'uMode', viewMode);
+  gl.bindVertexArray(quadVAO);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  gl.bindVertexArray(null);
+}
+
+// ============================================================
+//  PARAMETER SLIDERS  — wire up UI elements
+// ============================================================
+function mkSlider(id, valId, read, write, fmt){
+  const el=document.getElementById(id), disp=document.getElementById(valId);
+  el.addEventListener('input', ()=>{ write(parseFloat(el.value)); disp.textContent=fmt(parseFloat(el.value)); });
+  disp.textContent = fmt(read());
+}
+
+mkSlider('pLapse', 'vLapse',
+  ()=>params.lapseRate,
+  v=>{params.lapseRate=v;},
+  v=>`${v.toFixed(1)} K/km`);
+
+mkSlider('pTropo', 'vTropo',
+  ()=>params.tropoFrac,
+  v=>{params.tropoFrac=v;},
+  v=>`${Math.round(v*DOMAIN)} m`);
+
+mkSlider('pCape', 'vCape',
+  ()=>params.capeBoost,
+  v=>{params.capeBoost=v;},
+  v=>`${v.toFixed(2)} ×`);
+
+mkSlider('pSolar', 'vSolar',
+  ()=>params.solarWm2,
+  v=>{params.solarWm2=v;},
+  v=>`${Math.round(v)} W/m²`);
+
+mkSlider('pRH', 'vRH',
+  ()=>Math.round(params.surfaceRH*100),
+  v=>{params.surfaceRH=v/100;},
+  v=>`${Math.round(v)} %`);
+
+mkSlider('pShear', 'vShear',
+  ()=>params.windShear,
+  v=>{params.windShear=v;},
+  v=>`${v.toFixed(1)} m/s/km`);
+
+mkSlider('pDiss', 'vDiss',
+  ()=>params.dissipation,
+  v=>{params.dissipation=v;},
+  v=>v.toFixed(4));
+
+// Approximate CAPE display: rough estimate from lapse rate vs moist-adiabatic
+function estimateCAPE(){
+  // CAPE ≈ integral of buoyancy for a parcel rising from LCL to EL
+  // Simplified: proportional to (lapseRate - 6.0) clamped at 0, scaled
+  const excess = Math.max(0, params.lapseRate - 6.0);
+  return Math.round(excess * 700 * params.capeBoost);
+}
+
+// ============================================================
+//  MAIN LOOP
+// ============================================================
+let stepCount = 0, paused = false, frameAccum = 0;
+let diagDone = false;
+
+// Read back the cond texture at the bubble voxel to verify qc is non-zero on GPU.
+// Bubble is at ix=32, iy=8, iz=32 → slab atlas texel: x=32, y=264
+// (iz%SPD*N+ix = 0*64+32=32,  iz/SPD*N+iy = 4*64+8=264)
+function diagReadback(){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, cond.fbo[cond.cur]); // FBO for current read tex
+  // R16F FBO: read as RED+FLOAT (valid with EXT_color_buffer_float)
+  const px = new Float32Array(1);
+  gl.readPixels(32, 264, 1, 1, gl.RED, gl.FLOAT, px);
+  const err = gl.getError();
+  if(err){ // fallback to RGBA if RED read fails
+    const px4 = new Float32Array(4);
+    gl.readPixels(32, 264, 1, 1, gl.RGBA, gl.FLOAT, px4);
+    console.log(`[diag step ${stepCount}] bubble qc (RGBA fallback) = ${px4[0].toExponential(4)}, gl.getError was ${err}`);
+  } else {
+    console.log(`[diag step ${stepCount}] bubble qc (ix=32,iy=8,iz=32) = ${px[0].toExponential(4)}`);
+  }
+  // Sample a 5-pixel strip around the bubble row at y=264
+  const strip = new Float32Array(5);
+  gl.readPixels(30, 264, 5, 1, gl.RED, gl.FLOAT, strip);
+  console.log('[diag] strip x=30..34, y=264:', Array.from(strip).map(v=>v.toExponential(3)).join(', '));
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+const slicePosEl  = document.getElementById('slicePos');
+const slicePosVal = document.getElementById('slicePosVal');
+const viewModeEl  = document.getElementById('viewMode');
+const sliceAxisEl = document.getElementById('sliceAxis');
+const speedEl     = document.getElementById('speed');
+const speedVal    = document.getElementById('speedVal');
+
+// Slider index → steps-per-frame rate (fractional values slow the sim down)
+const SPEED_STOPS = [0.05, 0.25, 0.5, 1, 2, 4, 8];
+const SPEED_LABELS = ['1/20', '¼', '½', '1', '2', '4', '8'];
+function currentStepsPerFrame(){ return SPEED_STOPS[parseInt(speedEl.value,10)]; }
+
+slicePosEl.addEventListener('input', ()=> slicePosVal.textContent=slicePosEl.value);
+speedEl.addEventListener('input', ()=>{
+  const i = parseInt(speedEl.value,10);
+  speedVal.textContent = SPEED_LABELS[i] + ' step/frame';
+});
+// Set initial label
+speedVal.textContent = SPEED_LABELS[parseInt(speedEl.value,10)] + ' step/frame';
+
+initSimulation();
+
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  initSimulation(); frameAccum=0; paused=false;
+  document.getElementById('pauseBtn').textContent='Pause';
+});
+document.getElementById('pauseBtn').addEventListener('click', ()=>{
+  paused=!paused;
+  document.getElementById('pauseBtn').textContent=paused?'Resume':'Pause';
+  if(!paused) loop();
+});
+
+function loop(){
+  if(paused){ return; }
+  frameAccum += currentStepsPerFrame();
+  while(frameAccum >= 1){ simStep(); stepCount++; frameAccum--; }
+
+  // One-time readback after ~20 steps to verify qc values on GPU
+  if(!diagDone && stepCount >= 20){ diagDone = true; diagReadback(); }
+
+  const axMap={x:0,y:1,z:2};
+  render(parseInt(slicePosEl.value,10), axMap[sliceAxisEl.value], parseInt(viewModeEl.value,10));
+
+  document.getElementById('stepCount').textContent = stepCount;
+  document.getElementById('simTime').textContent   = (stepCount*DT).toFixed(0)+' s';
+  document.getElementById('capeTxt').textContent   = `CAPE ≈ ${estimateCAPE()} J/kg`;
+
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
