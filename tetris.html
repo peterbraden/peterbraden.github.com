@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chaos Tetris</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0a0a0f;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  font-family: 'Courier New', monospace;
+  color: #eee;
+}
+#wrapper { display: flex; gap: 20px; align-items: flex-start; padding: 20px; }
+#gameCanvas { border: 1px solid #2a2a3a; display: block; }
+#sidebar { width: 150px; }
+.panel {
+  background: #111118;
+  border: 1px solid #2a2a3a;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.panel h3 { font-size: 10px; color: #556; margin-bottom: 6px; letter-spacing: 2px; }
+.val { font-size: 24px; color: #dde; }
+#chaosBar { width: 100%; height: 6px; background: #1a1a2a; border-radius: 3px; margin-top: 6px; overflow: hidden; }
+#chaosFill { height: 100%; border-radius: 3px; width: 0%; transition: width 0.4s; background: linear-gradient(to right, #2d2, #dd2, #d22); }
+#chaosLabel { font-size: 10px; color: #886; margin-top: 5px; letter-spacing: 1px; }
+#nextCanvas { display: block; margin: 0 auto; }
+.btn {
+  width: 100%;
+  padding: 10px;
+  background: #1a3a1a;
+  color: #4e4;
+  border: 1px solid #2a5a2a;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  letter-spacing: 2px;
+  display: block;
+}
+.btn:hover { background: #2a4a2a; }
+#gameOver { display: none; text-align: center; }
+#gameOver h2 { color: #f44; margin-bottom: 8px; font-size: 20px; letter-spacing: 3px; }
+#controls { font-size: 10px; color: #445; line-height: 1.8; }
+#controls span { color: #667; }
+</style>
+</head>
+<body>
+<div id="wrapper">
+  <canvas id="gameCanvas" width="300" height="600"></canvas>
+  <div id="sidebar">
+    <div class="panel">
+      <h3>SCORE</h3>
+      <div class="val" id="scoreVal">0</div>
+    </div>
+    <div class="panel">
+      <h3>LEVEL</h3>
+      <div class="val" id="levelVal">1</div>
+    </div>
+    <div class="panel">
+      <h3>LINES</h3>
+      <div class="val" id="linesVal">0</div>
+    </div>
+    <div class="panel">
+      <h3>CHAOS ENGINE</h3>
+      <div id="chaosBar"><div id="chaosFill"></div></div>
+      <div id="chaosLabel">STABLE</div>
+    </div>
+    <div class="panel">
+      <h3>NEXT</h3>
+      <canvas id="nextCanvas" width="120" height="80"></canvas>
+    </div>
+    <div class="panel" id="gameOver">
+      <h2>GAME<br>OVER</h2>
+      <button class="btn" id="restartBtn">RESTART</button>
+    </div>
+    <div class="panel" id="startPanel">
+      <button class="btn" id="startBtn">START</button>
+    </div>
+    <div class="panel" id="controls">
+      <span>← →</span> move<br>
+      <span>↑ / Z</span> rotate<br>
+      <span>↓</span> soft drop<br>
+      <span>SPACE</span> hard drop
+    </div>
+  </div>
+</div>
+<script>
+const COLS = 10, ROWS = 20, CELL = 30;
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const nextCanvas = document.getElementById('nextCanvas');
+const nctx = nextCanvas.getContext('2d');
+
+const PIECES = [
+  { shape: [[1,1,1,1]],           color: '#0ef' },
+  { shape: [[1,1],[1,1]],         color: '#fe0' },
+  { shape: [[0,1,0],[1,1,1]],     color: '#b0f' },
+  { shape: [[1,0],[1,0],[1,1]],   color: '#f80' },
+  { shape: [[0,1],[0,1],[1,1]],   color: '#36f' },
+  { shape: [[0,1,1],[1,1,0]],     color: '#0d0' },
+  { shape: [[1,1,0],[0,1,1]],     color: '#f22' },
+];
+
+let grid, physBlocks, particles, activePiece, nextPiece;
+let score, level, lines, chaos;
+let gameRunning, dropTimer, dropInterval, lastTime;
+let screenShake;
+
+function initState() {
+  grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+  physBlocks = [];
+  particles = [];
+  score = 0; level = 1; lines = 0; chaos = 0;
+  dropTimer = 0; dropInterval = 800;
+  screenShake = { x: 0, y: 0, t: 0 };
+}
+
+// --- Grid helpers ---
+function gridSet(r, c, v) {
+  if (r >= 0 && r < ROWS && c >= 0 && c < COLS) grid[r][c] = v;
+}
+
+// --- PhysBlocks: visual layer for landed cells ---
+function addPhysBlock(r, c, color) {
+  physBlocks = physBlocks.filter(b => !(b.gr === r && b.gc === c));
+  physBlocks.push({ gr: r, gc: c, color, dx: 0, dy: 0, angle: 0, vx: 0, vy: 0, va: 0, alpha: 1, scale: 1, dying: false, dyingTimer: 0 });
+}
+
+function getPhysBlock(r, c) {
+  return physBlocks.find(b => b.gr === r && b.gc === c && !b.dying);
+}
+
+// Apply landing impulse based on chaos
+function landingImpact(blocks, hardness) {
+  if (chaos < 3 || blocks.length === 0) return;
+
+  const cx = blocks.reduce((s, b) => s + b.gc, 0) / blocks.length;
+  const cy = blocks.reduce((s, b) => s + b.gr, 0) / blocks.length;
+  const f = Math.min(1, (chaos - 2) / 7); // 0..1 over chaos 3..10
+
+  for (const b of blocks) {
+    if (chaos >= 3) {
+      b.vx = (Math.random() - 0.5) * 5 * f * hardness;
+      b.vy = -Math.random() * 4 * f * hardness;
+      b.va = (Math.random() - 0.5) * 0.4 * f * hardness;
+    }
+    if (chaos >= 6) {
+      const ax = b.gc - cx, ay = b.gr - cy;
+      const d = Math.sqrt(ax*ax + ay*ay) || 1;
+      b.vx += (ax/d) * 6 * f * hardness;
+      b.vy += (ay/d) * 4 * f * hardness;
+      b.va += (Math.random() - 0.5) * 0.8 * f * hardness;
+    }
+    if (chaos >= 8) {
+      b.vx = (Math.random() - 0.5) * 14 * f * hardness;
+      b.vy = -Math.random() * 10 * f * hardness;
+      b.va = (Math.random() - 0.5) * 1.8 * f * hardness;
+    }
+  }
+
+  if (chaos >= 7) {
+    screenShake.t = Math.max(screenShake.t, f * hardness * 6);
+  }
+}
+
+function spawnClearParticles(row) {
+  const count = 4 + Math.floor(chaos * 1.5);
+  for (let c = 0; c < COLS; c++) {
+    const x = c * CELL + CELL / 2, y = row * CELL + CELL / 2;
+    const color = grid[row][c] || '#fff';
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x, y, color,
+        vx: (Math.random() - 0.5) * (8 + chaos * 2),
+        vy: (Math.random() - 1.3) * (7 + chaos * 2),
+        life: 1,
+        decay: 0.018 + Math.random() * 0.035,
+        size: 2 + Math.random() * 3,
+      });
+    }
+  }
+}
+
+// --- Piece logic ---
+function newPiece() {
+  const def = PIECES[Math.floor(Math.random() * PIECES.length)];
+  const shape = def.shape.map(r => [...r]);
+  return { shape, color: def.color, r: 0, c: Math.floor((COLS - shape[0].length) / 2) };
+}
+
+function rotateCW(shape) {
+  const rows = shape.length, cols = shape[0].length;
+  const out = Array.from({ length: cols }, () => Array(rows).fill(0));
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      out[c][rows - 1 - r] = shape[r][c];
+  return out;
+}
+
+function validPos(shape, r, c) {
+  for (let row = 0; row < shape.length; row++)
+    for (let col = 0; col < shape[row].length; col++) {
+      if (!shape[row][col]) continue;
+      const nr = r + row, nc = c + col;
+      if (nr >= ROWS || nc < 0 || nc >= COLS) return false;
+      if (nr >= 0 && grid[nr][nc]) return false;
+    }
+  return true;
+}
+
+function lockPiece() {
+  const { shape, color, r, c } = activePiece;
+  const locked = [];
+
+  for (let row = 0; row < shape.length; row++)
+    for (let col = 0; col < shape[row].length; col++) {
+      if (!shape[row][col]) continue;
+      const gr = r + row, gc = c + col;
+      if (gr < 0) { triggerGameOver(); return; }
+      gridSet(gr, gc, color);
+      addPhysBlock(gr, gc, color);
+      const pb = getPhysBlock(gr, gc);
+      if (pb) locked.push(pb);
+    }
+
+  landingImpact(locked, 0.5 + Math.random() * 0.7);
+  clearLines();
+
+  activePiece = nextPiece;
+  nextPiece = newPiece();
+
+  if (!validPos(activePiece.shape, activePiece.r, activePiece.c)) {
+    triggerGameOver();
+    return;
+  }
+  updateUI();
+  drawNext();
+}
+
+function clearLines() {
+  let cleared = 0;
+  for (let row = ROWS - 1; row >= 0; row--) {
+    if (grid[row].every(c => c !== null)) {
+      spawnClearParticles(row);
+
+      // Flag phys blocks on this row as dying
+      for (let col = 0; col < COLS; col++) {
+        const pb = getPhysBlock(row, col);
+        if (pb) {
+          pb.dying = true;
+          pb.dyingTimer = 1;
+          pb.vx = (Math.random() - 0.5) * 18;
+          pb.vy = -3 - Math.random() * 8;
+          pb.va = (Math.random() - 0.5) * 2.5;
+        }
+      }
+
+      grid.splice(row, 1);
+      grid.unshift(Array(COLS).fill(null));
+
+      // Shift live physblocks above cleared row down one
+      for (const b of physBlocks) {
+        if (!b.dying && b.gr <= row) {
+          b.gr++;
+          const f = Math.max(0, (chaos - 3) / 7);
+          b.vy += f * (1 + Math.random() * 3);
+          b.va += (Math.random() - 0.5) * f * 0.5;
+        }
+      }
+
+      cleared++;
+      row++; // recheck this index since grid shifted
+    }
+  }
+
+  if (cleared > 0) {
+    const pts = [0, 100, 300, 500, 800][Math.min(cleared, 4)] * level;
+    score += pts;
+    lines += cleared;
+    level = Math.floor(lines / 10) + 1;
+    chaos = Math.min(10, Math.floor(lines / 4));
+    dropInterval = Math.max(80, 800 - (level - 1) * 65);
+    updateChaosBar();
+  }
+}
+
+// --- Physics update ---
+function updatePhysics(dt) {
+  const spring = 0.08 + chaos * 0.004;
+  const damp   = Math.max(0.78, 0.94 - chaos * 0.008);
+  const adamp  = Math.max(0.80, 0.95 - chaos * 0.008);
+  const maxOff = 2 + chaos * 3.5;
+  const maxAng = chaos * 0.12;
+
+  for (const b of physBlocks) {
+    if (b.dying) {
+      b.vx *= 0.97; b.vy += 0.45; b.dx += b.vx; b.dy += b.vy;
+      b.va *= 0.97; b.angle += b.va;
+      b.dyingTimer -= 0.025;
+      b.alpha = Math.max(0, b.dyingTimer);
+      b.scale = 0.4 + b.dyingTimer * 0.6;
+      continue;
+    }
+
+    // Spring toward grid origin
+    b.vx += -b.dx * spring; b.vy += -b.dy * spring;
+    b.va += -b.angle * 0.12;
+    b.vx *= damp; b.vy *= damp; b.va *= adamp;
+    b.dx += b.vx; b.dy += b.vy; b.angle += b.va;
+
+    b.dx = Math.max(-maxOff, Math.min(maxOff, b.dx));
+    b.dy = Math.max(-maxOff, Math.min(maxOff, b.dy));
+    b.angle = Math.max(-maxAng, Math.min(maxAng, b.angle));
+
+    // Bounce off walls
+    const sx = b.gc * CELL + b.dx;
+    const sy = b.gr * CELL + b.dy;
+    if (sx < 0)               { b.dx = 0; b.vx =  Math.abs(b.vx) * 0.5; }
+    if (sx + CELL > COLS*CELL){ b.dx = 0; b.vx = -Math.abs(b.vx) * 0.5; }
+    if (sy + CELL > ROWS*CELL){ b.dy = 0; b.vy = -Math.abs(b.vy) * 0.35; }
+  }
+
+  physBlocks = physBlocks.filter(b => !b.dying || b.dyingTimer > 0);
+
+  // Particles
+  for (const p of particles) {
+    p.x += p.vx; p.y += p.vy; p.vy += 0.25; p.vx *= 0.985;
+    p.life -= p.decay;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  // Screen shake decay
+  if (screenShake.t > 0) {
+    screenShake.t = Math.max(0, screenShake.t - 0.08);
+    screenShake.x = (Math.random() - 0.5) * screenShake.t * 12;
+    screenShake.y = (Math.random() - 0.5) * screenShake.t * 12;
+  } else {
+    screenShake.x = 0; screenShake.y = 0;
+  }
+}
+
+// --- Rendering ---
+function drawBlock(c, x, y, size, color, alpha, angle) {
+  c.save();
+  if (alpha !== undefined) c.globalAlpha = alpha;
+  c.translate(x + size / 2, y + size / 2);
+  if (angle) c.rotate(angle);
+  c.translate(-size / 2, -size / 2);
+
+  c.fillStyle = color;
+  c.fillRect(1, 1, size - 2, size - 2);
+
+  c.fillStyle = 'rgba(255,255,255,0.22)';
+  c.fillRect(1, 1, size - 2, 4);
+  c.fillRect(1, 1, 4, size - 2);
+
+  c.fillStyle = 'rgba(0,0,0,0.35)';
+  c.fillRect(1, size - 4, size - 2, 3);
+  c.fillRect(size - 4, 1, 3, size - 2);
+
+  c.restore();
+}
+
+function render() {
+  ctx.save();
+  ctx.translate(Math.round(screenShake.x), Math.round(screenShake.y));
+
+  // Background
+  ctx.fillStyle = '#0d0d14';
+  ctx.fillRect(-10, -10, canvas.width + 20, canvas.height + 20);
+
+  // Subtle grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.025)';
+  ctx.lineWidth = 1;
+  for (let r = 0; r <= ROWS; r++) {
+    ctx.beginPath(); ctx.moveTo(0, r * CELL); ctx.lineTo(COLS * CELL, r * CELL); ctx.stroke();
+  }
+  for (let c = 0; c <= COLS; c++) {
+    ctx.beginPath(); ctx.moveTo(c * CELL, 0); ctx.lineTo(c * CELL, ROWS * CELL); ctx.stroke();
+  }
+
+  // Ghost piece (fades at high chaos)
+  if (activePiece && chaos < 9) {
+    const ghostAlpha = Math.max(0, 0.22 - chaos * 0.02);
+    let gr = activePiece.r;
+    while (validPos(activePiece.shape, gr + 1, activePiece.c)) gr++;
+    if (gr !== activePiece.r) {
+      for (let row = 0; row < activePiece.shape.length; row++)
+        for (let col = 0; col < activePiece.shape[row].length; col++) {
+          if (!activePiece.shape[row][col]) continue;
+          ctx.globalAlpha = ghostAlpha;
+          ctx.strokeStyle = activePiece.color;
+          ctx.lineWidth = 1;
+          ctx.strokeRect((activePiece.c + col) * CELL + 1, (gr + row) * CELL + 1, CELL - 2, CELL - 2);
+          ctx.globalAlpha = 1;
+        }
+    }
+  }
+
+  // Landed physblocks
+  for (const b of physBlocks) {
+    drawBlock(ctx, b.gc * CELL + b.dx, b.gr * CELL + b.dy, CELL * b.scale, b.color, b.alpha, b.angle);
+  }
+
+  // Active piece
+  if (activePiece) {
+    for (let row = 0; row < activePiece.shape.length; row++)
+      for (let col = 0; col < activePiece.shape[row].length; col++) {
+        if (!activePiece.shape[row][col]) continue;
+        drawBlock(ctx, (activePiece.c + col) * CELL, (activePiece.r + row) * CELL, CELL, activePiece.color);
+      }
+  }
+
+  // Particles
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // High-chaos red vignette tint
+  if (chaos >= 7) {
+    const intensity = (chaos - 7) / 3 * 0.06;
+    ctx.fillStyle = `rgba(200, 30, 0, ${intensity})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  ctx.restore();
+}
+
+function drawNext() {
+  nctx.fillStyle = '#111118';
+  nctx.fillRect(0, 0, 120, 80);
+  if (!nextPiece) return;
+  const s = nextPiece.shape;
+  const bs = 18;
+  const ox = (120 - s[0].length * bs) / 2;
+  const oy = (80 - s.length * bs) / 2;
+  for (let r = 0; r < s.length; r++)
+    for (let c = 0; c < s[r].length; c++)
+      if (s[r][c]) drawBlock(nctx, ox + c * bs, oy + r * bs, bs, nextPiece.color);
+}
+
+// --- UI updates ---
+const CHAOS_LABELS = ['STABLE','STABLE','STABLE','WOBBLY','WOBBLY','BOUNCY','BOUNCY','CHAOTIC','CHAOTIC','BREAKING','BREAKING'];
+
+function updateChaosBar() {
+  document.getElementById('chaosFill').style.width = (chaos * 10) + '%';
+  document.getElementById('chaosLabel').textContent = CHAOS_LABELS[chaos] || 'BREAKING';
+}
+
+function updateUI() {
+  document.getElementById('scoreVal').textContent = score;
+  document.getElementById('levelVal').textContent = level;
+  document.getElementById('linesVal').textContent = lines;
+}
+
+// --- Input ---
+const keys = {};
+document.addEventListener('keydown', e => {
+  if (!gameRunning || !activePiece) return;
+  const k = e.key;
+
+  if (k === 'ArrowLeft' || k === 'a') {
+    if (validPos(activePiece.shape, activePiece.r, activePiece.c - 1)) activePiece.c--;
+  } else if (k === 'ArrowRight' || k === 'd') {
+    if (validPos(activePiece.shape, activePiece.r, activePiece.c + 1)) activePiece.c++;
+  } else if (k === 'ArrowDown' || k === 's') {
+    if (validPos(activePiece.shape, activePiece.r + 1, activePiece.c)) { activePiece.r++; score++; }
+  } else if (k === 'ArrowUp' || k === 'w' || k === 'z' || k === 'Z') {
+    // Rotate with wall kick
+    const rot = rotateCW(activePiece.shape);
+    if      (validPos(rot, activePiece.r, activePiece.c))     activePiece.shape = rot;
+    else if (validPos(rot, activePiece.r, activePiece.c - 1)) { activePiece.shape = rot; activePiece.c--; }
+    else if (validPos(rot, activePiece.r, activePiece.c + 1)) { activePiece.shape = rot; activePiece.c++; }
+    else if (validPos(rot, activePiece.r, activePiece.c - 2)) { activePiece.shape = rot; activePiece.c -= 2; }
+    else if (validPos(rot, activePiece.r, activePiece.c + 2)) { activePiece.shape = rot; activePiece.c += 2; }
+  } else if (k === ' ') {
+    while (validPos(activePiece.shape, activePiece.r + 1, activePiece.c)) { activePiece.r++; score += 2; }
+    lockPiece();
+    dropTimer = 0;
+    updateUI();
+    return;
+  } else {
+    return;
+  }
+
+  updateUI();
+  e.preventDefault();
+});
+
+// --- Game loop ---
+function gameLoop(ts) {
+  if (!gameRunning) return;
+  const dt = Math.min(ts - lastTime, 50);
+  lastTime = ts;
+  dropTimer += dt;
+
+  if (dropTimer >= dropInterval) {
+    dropTimer = 0;
+    if (validPos(activePiece.shape, activePiece.r + 1, activePiece.c)) {
+      activePiece.r++;
+    } else {
+      lockPiece();
+    }
+  }
+
+  updatePhysics(dt);
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+function startGame() {
+  initState();
+  activePiece = newPiece();
+  nextPiece = newPiece();
+  gameRunning = true;
+
+  updateUI();
+  updateChaosBar();
+  drawNext();
+
+  document.getElementById('gameOver').style.display = 'none';
+  document.getElementById('startPanel').style.display = 'none';
+
+  lastTime = performance.now();
+  requestAnimationFrame(gameLoop);
+}
+
+function triggerGameOver() {
+  gameRunning = false;
+  document.getElementById('gameOver').style.display = 'block';
+}
+
+document.getElementById('startBtn').onclick = startGame;
+document.getElementById('restartBtn').onclick = startGame;
+
+// Initial next-canvas fill
+nctx.fillStyle = '#111118';
+nctx.fillRect(0, 0, 120, 80);
+</script>
+</body>
+</html>
