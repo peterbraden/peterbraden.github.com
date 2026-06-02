@@ -1,144 +1,161 @@
 #!/usr/bin/env bash
-# Reads experiments.json and writes index.html.
+# Reads experiments.json and writes index.html (Ledger design).
 # Requires: jq
 set -euo pipefail
 
 MANIFEST="${1:-experiments.json}"
 OUTPUT="index.html"
-COLORS=("#59f" "#f95" "#5f9" "#f59" "#95f" "#9f5")
 
 if ! command -v jq &>/dev/null; then
-  echo "Error: jq is required" >&2
-  exit 1
+  echo "Error: jq is required" >&2; exit 1
 fi
 
-cat > "$OUTPUT" <<'EOF'
+HUES=(12 48 92 152 196 238 286 330)
+
+get_pattern() {
+  local fg='rgba(0,0,0,.16)'
+  case $(( $1 % 4 )) in
+    0) printf '%s' "radial-gradient(${fg} 1.5px,transparent 1.7px) 0 0/13px 13px" ;;
+    1) printf '%s' "repeating-linear-gradient(45deg,${fg} 0 1.5px,transparent 1.5px 11px)" ;;
+    2) printf '%s' "linear-gradient(${fg} 1px,transparent 1px) 0 0/100% 11px" ;;
+    3) printf '%s' "conic-gradient(${fg} 0 25%,transparent 0 50%,${fg} 0 75%,transparent 0) 0 0/16px 16px" ;;
+  esac
+}
+
+# ---- header (no variable expansion needed) ----
+cat > "$OUTPUT" <<'HEADER'
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Peter Braden — Experiments</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      background: #111;
-      color: #fff;
-      font-family: 'Gill Sans', Helvetica, Arial, sans-serif;
-      font-variant: small-caps;
-      letter-spacing: 0.15em;
-      min-height: 100vh;
-      padding: 2rem;
-    }
-
-    header {
-      text-align: center;
-      margin-bottom: 3rem;
-      padding-top: 1.5rem;
-    }
-
-    h1 {
-      font-size: 2.2rem;
-      letter-spacing: 0.4em;
-      margin-bottom: 0.75rem;
-    }
-
-    nav {
-      display: flex;
-      gap: 2rem;
-      justify-content: center;
-      font-size: 0.85rem;
-    }
-
-    nav a {
-      color: #777;
-      text-decoration: none;
-    }
-
-    nav a:hover { color: #fff; }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 1px;
-      max-width: 1100px;
-      margin: 0 auto;
-      background: #333;
-    }
-
-    .card {
-      display: block;
-      background: #000;
-      padding: 1.5rem;
-      text-decoration: none;
-      color: #fff;
-      border-top: 4px solid var(--accent);
-      transition: background 0.15s;
-    }
-
-    .card:hover {
-      background: #1a1a1a;
-      text-shadow: 0 0 12px var(--accent);
-    }
-
-    .card-title {
-      font-size: 1.1rem;
-      margin-bottom: 0.5rem;
-      color: var(--accent);
-    }
-
-    .card-desc {
-      font-size: 0.72rem;
-      font-variant: normal;
-      letter-spacing: 0.04em;
-      line-height: 1.55;
-      color: #999;
-      margin-bottom: 0.75rem;
-    }
-
-    .card-date {
-      font-size: 0.68rem;
-      color: #444;
-    }
-  </style>
+  <title>peterbraden — workshop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="ledger.css">
 </head>
 <body>
-  <header>
-    <h1>Peter Braden</h1>
-    <nav>
-      <a href="http://peterbraden.co.uk">peterbraden.co.uk</a>
-      <a href="https://github.com/peterbraden">github</a>
-    </nav>
-  </header>
-  <main class="grid">
-EOF
+<div class="led-root">
+  <div class="led-aurora"></div>
+  <div class="led-inner">
+    <aside class="led-rail">
+      <div>
+        <div class="led-tag">// a workshop for small things</div>
+        <h1 class="led-name">Peter Braden<span class="blink">_</span></h1>
+        <p class="led-intro" id="led-intro"></p>
+      </div>
+      <div class="led-rail-bot">
+        <div class="led-links-label">// elsewhere</div>
+        <div class="led-links">
+          <a class="led-link" href="https://github.com/peterbraden">
+            <span>GitHub</span>
+            <span class="led-link-handle">@peterbraden</span>
+          </a>
+          <a class="led-link" href="https://peterbraden.co.uk">
+            <span>Homepage</span>
+            <span class="led-link-handle">peterbraden.co.uk</span>
+          </a>
+        </div>
+        <div class="led-sig">
+          <span class="led-count" id="led-count">0</span> experiments · kept since 2008
+        </div>
+      </div>
+    </aside>
+    <main class="led-list">
+HEADER
 
+# ---- experiment rows ----
 i=0
 while IFS= read -r entry; do
   title=$(printf '%s' "$entry" | jq -r '.title')
   url=$(printf '%s' "$entry" | jq -r '.url')
-  description=$(printf '%s' "$entry" | jq -r '.description // ""')
-  date=$(printf '%s' "$entry" | jq -r '.date // ""')
-  color=${COLORS[$((i % ${#COLORS[@]}))]}
+  desc=$(printf '%s' "$entry" | jq -r '.desc // ""')
+  dateLong=$(printf '%s' "$entry" | jq -r '.dateLong // .date // ""')
+  tags=$(printf '%s' "$entry" | jq -r '.tags // [] | map("·" + .) | join(" ")')
 
-  printf '    <a href="%s" class="card" style="--accent: %s">\n' "$url" "$color" >> "$OUTPUT"
-  printf '      <div class="card-title">%s</div>\n' "$title" >> "$OUTPUT"
-  if [ -n "$description" ]; then
-    printf '      <div class="card-desc">%s</div>\n' "$description" >> "$OUTPUT"
-  fi
-  if [ -n "$date" ]; then
-    printf '      <div class="card-date">%s</div>\n' "$date" >> "$OUTPUT"
-  fi
-  printf '    </a>\n' >> "$OUTPUT"
+  hue=${HUES[$((i % 8))]}
+  hue2=$(( (hue + 26) % 360 ))
+  pat=$(get_pattern $i)
+  row_delay=$(( 600 + i * 70 ))
+  tile_delay=$(( 680 + i * 70 ))
+  num=$(printf '%02d' $(( i + 1 )))
+
+  printf '%s\n' "      <a href=\"${url}\" class=\"led-row\" style=\"animation-delay: ${row_delay}ms; --glow: oklch(0.64 0.16 ${hue} / 0.55)\">" >> "$OUTPUT"
+  printf '%s\n' "        <div class=\"led-tile\" style=\"background: linear-gradient(145deg, oklch(0.64 0.15 ${hue}), oklch(0.52 0.16 ${hue2})); animation-delay: ${tile_delay}ms\">" >> "$OUTPUT"
+  printf '%s\n' "          <span class=\"led-tile-pat\" style=\"background-image: ${pat}\"></span>" >> "$OUTPUT"
+  printf '%s\n' "          <span class=\"led-tile-num\">${num}</span>" >> "$OUTPUT"
+  printf '%s\n' "        </div>" >> "$OUTPUT"
+  printf '%s\n' "        <div class=\"led-body\">" >> "$OUTPUT"
+  printf '%s\n' "          <div class=\"led-title\">${title}</div>" >> "$OUTPUT"
+  [ -n "$desc" ] && printf '%s\n' "          <div class=\"led-desc\">${desc}</div>" >> "$OUTPUT"
+  printf '%s\n' "        </div>" >> "$OUTPUT"
+  printf '%s\n' "        <div class=\"led-meta\">" >> "$OUTPUT"
+  [ -n "$dateLong" ] && printf '%s\n' "          <span class=\"led-date\">${dateLong}</span>" >> "$OUTPUT"
+  [ -n "$tags" ] && printf '%s\n' "          <span class=\"led-tags\">${tags}</span>" >> "$OUTPUT"
+  printf '%s\n' "        </div>" >> "$OUTPUT"
+  printf '%s\n' "        <span class=\"led-arrow\">→</span>" >> "$OUTPUT"
+  printf '%s\n' "      </a>" >> "$OUTPUT"
 
   i=$(( i + 1 ))
 done < <(jq -c '.[]' "$MANIFEST")
 
-cat >> "$OUTPUT" <<'EOF'
-  </main>
+TOTAL=$i
+
+# ---- footer with inline JS ($TOTAL expands here) ----
+cat >> "$OUTPUT" <<FOOTER
+    </main>
+  </div>
+</div>
+<script>
+(function () {
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Typewriter intro
+  var text = 'A workshop for small experiments. Pages here are vibe-coded, mostly unfinished, kept around because they were fun to make.';
+  var el = document.getElementById('led-intro');
+  if (reduce) {
+    el.textContent = text;
+  } else {
+    var i = 0;
+    var caret = document.createElement('span');
+    caret.className = 'led-caret';
+    el.appendChild(caret);
+    var timer;
+    function tick() {
+      el.textContent = text.slice(0, i);
+      el.appendChild(caret);
+      i++;
+      if (i <= text.length) {
+        timer = setTimeout(tick, 22 + (text[i - 1] === ' ' ? 18 : 0));
+      } else {
+        caret.remove();
+      }
+    }
+    setTimeout(tick, 450);
+  }
+
+  // Count-up
+  var countEl = document.getElementById('led-count');
+  var target = ${TOTAL};
+  if (reduce) {
+    countEl.textContent = target;
+  } else {
+    var t0 = null;
+    setTimeout(function () {
+      requestAnimationFrame(function step(t) {
+        if (!t0) t0 = t;
+        var p = Math.min((t - t0) / 1100, 1);
+        var eased = 1 - Math.pow(1 - p, 3);
+        countEl.textContent = Math.round(eased * target);
+        if (p < 1) requestAnimationFrame(step);
+      });
+    }, 950);
+  }
+})();
+</script>
 </body>
 </html>
-EOF
+FOOTER
 
-echo "Generated $OUTPUT ($i experiments)."
+echo "Generated $OUTPUT ($TOTAL experiments)."

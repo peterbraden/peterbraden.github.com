@@ -1,62 +1,92 @@
 [
   {
-    "title": "Orbits",
-    "url": "orbits.html",
-    "description": "Physics-based game: launch a spaceship through planetary gravity fields to reach a target zone.",
-    "date": "2010-02-15"
-  },
-  {
-    "title": "JS Raytracer",
-    "url": "raytracer.html",
-    "description": "A raytracer in vanilla JS: Phong shading, reflections, refractions, and a checkerboard floor.",
-    "date": "2010-02-15"
-  },
-  {
-    "title": "Isometric Terrain",
-    "url": "isometric_canvas.html",
-    "description": "Procedurally generated isometric landscape with height maps, textures, and lighting.",
-    "date": "2010-02-15"
-  },
-  {
-    "title": "Particles",
-    "url": "particles.html",
-    "description": "Interactive particle system attracted to the mouse cursor with momentum-based physics.",
-    "date": "2010-02-16"
-  },
-  {
-    "title": "Maze Generator",
-    "url": "maze.html",
-    "description": "Procedurally generated mazes using depth-first search on a grid, with solution path.",
-    "date": "2010-04-08"
-  },
-  {
-    "title": "Drawing with BrowserCouch",
-    "url": "blank-canvas.html",
-    "description": "Canvas drawing application with persistent storage via BrowserCouch (client-side CouchDB).",
-    "date": "2010-04-08"
-  },
-  {
-    "title": "Mandelbrot Set",
-    "url": "brot.html",
-    "description": "Interactive Mandelbrot fractal explorer rendered on canvas with zoom.",
-    "date": "2010-08-20"
-  },
-  {
-    "title": "Genetics of a Smile",
-    "url": "genetics-of-a-smile.html",
-    "description": "A genetic algorithm evolving pixel patterns to recreate a target image.",
-    "date": "2010-09-01"
-  },
-  {
-    "title": "Swirly Red Worms",
-    "url": "swirly.html",
-    "description": "Generative art: organic flowing lines with vector-based motion and a hint of randomness.",
-    "date": "2010-02-15"
-  },
-  {
-    "title": "Game of Life",
+    "slug": "life-sim",
     "url": "life-sim.html",
-    "description": "Conway's Game of Life — cellular automaton simulation on a canvas grid.",
-    "date": "2011-06-11"
+    "title": "Game of Life",
+    "desc": "Conway's Game of Life — cellular automaton evolving across a canvas grid.",
+    "date": "2011-06",
+    "dateLong": "June 2011",
+    "tags": ["simulation", "cellular-automata"]
+  },
+  {
+    "slug": "genetics-of-a-smile",
+    "url": "genetics-of-a-smile.html",
+    "title": "Genetics of a Smile",
+    "desc": "A genetic algorithm that evolves pixel patterns to recreate a target image.",
+    "date": "2010-09",
+    "dateLong": "September 2010",
+    "tags": ["algorithms", "ai"]
+  },
+  {
+    "slug": "brot",
+    "url": "brot.html",
+    "title": "Mandelbrot Set",
+    "desc": "Interactive Mandelbrot fractal explorer rendered on canvas with zoom.",
+    "date": "2010-08",
+    "dateLong": "August 2010",
+    "tags": ["fractals", "generative"]
+  },
+  {
+    "slug": "maze",
+    "url": "maze.html",
+    "title": "Maze Generator",
+    "desc": "Procedurally generated mazes using depth-first search, with solution path.",
+    "date": "2010-04",
+    "dateLong": "April 2010",
+    "tags": ["algorithms", "generative"]
+  },
+  {
+    "slug": "blank-canvas",
+    "url": "blank-canvas.html",
+    "title": "Drawing with BrowserCouch",
+    "desc": "Canvas drawing app with persistent storage via BrowserCouch, a client-side CouchDB.",
+    "date": "2010-04",
+    "dateLong": "April 2010",
+    "tags": ["canvas", "tool"]
+  },
+  {
+    "slug": "particles",
+    "url": "particles.html",
+    "title": "Particles",
+    "desc": "Interactive particle system attracted to the mouse cursor with momentum physics.",
+    "date": "2010-02",
+    "dateLong": "February 2010",
+    "tags": ["physics", "interactive"]
+  },
+  {
+    "slug": "orbits",
+    "url": "orbits.html",
+    "title": "Orbits",
+    "desc": "Physics game: launch a spaceship through planetary gravity fields to reach a target zone.",
+    "date": "2010-02",
+    "dateLong": "February 2010",
+    "tags": ["physics", "game"]
+  },
+  {
+    "slug": "raytracer",
+    "url": "raytracer.html",
+    "title": "JS Raytracer",
+    "desc": "A raytracer in vanilla JS with Phong shading, reflections, refractions, and a checkerboard floor.",
+    "date": "2010-02",
+    "dateLong": "February 2010",
+    "tags": ["graphics", "3d"]
+  },
+  {
+    "slug": "isometric",
+    "url": "isometric_canvas.html",
+    "title": "Isometric Terrain",
+    "desc": "Procedurally generated isometric landscape with height maps, textures, and lighting.",
+    "date": "2010-02",
+    "dateLong": "February 2010",
+    "tags": ["graphics", "generative"]
+  },
+  {
+    "slug": "swirly",
+    "url": "swirly.html",
+    "title": "Swirly Red Worms",
+    "desc": "Generative art: organic flowing lines with vector-based motion and a hint of randomness.",
+    "date": "2010-02",
+    "dateLong": "February 2010",
+    "tags": ["generative", "art"]
   }
 ]

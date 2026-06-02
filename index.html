@@ -3,150 +3,239 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Peter Braden — Experiments</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      background: #111;
-      color: #fff;
-      font-family: 'Gill Sans', Helvetica, Arial, sans-serif;
-      font-variant: small-caps;
-      letter-spacing: 0.15em;
-      min-height: 100vh;
-      padding: 2rem;
-    }
-
-    header {
-      text-align: center;
-      margin-bottom: 3rem;
-      padding-top: 1.5rem;
-    }
-
-    h1 {
-      font-size: 2.2rem;
-      letter-spacing: 0.4em;
-      margin-bottom: 0.75rem;
-    }
-
-    nav {
-      display: flex;
-      gap: 2rem;
-      justify-content: center;
-      font-size: 0.85rem;
-    }
-
-    nav a {
-      color: #777;
-      text-decoration: none;
-    }
-
-    nav a:hover { color: #fff; }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 1px;
-      max-width: 1100px;
-      margin: 0 auto;
-      background: #333;
-    }
-
-    .card {
-      display: block;
-      background: #000;
-      padding: 1.5rem;
-      text-decoration: none;
-      color: #fff;
-      border-top: 4px solid var(--accent);
-      transition: background 0.15s;
-    }
-
-    .card:hover {
-      background: #1a1a1a;
-      text-shadow: 0 0 12px var(--accent);
-    }
-
-    .card-title {
-      font-size: 1.1rem;
-      margin-bottom: 0.5rem;
-      color: var(--accent);
-    }
-
-    .card-desc {
-      font-size: 0.72rem;
-      font-variant: normal;
-      letter-spacing: 0.04em;
-      line-height: 1.55;
-      color: #999;
-      margin-bottom: 0.75rem;
-    }
-
-    .card-date {
-      font-size: 0.68rem;
-      color: #444;
-    }
-  </style>
+  <title>peterbraden — workshop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="ledger.css">
 </head>
 <body>
-  <header>
-    <h1>Peter Braden</h1>
-    <nav>
-      <a href="http://peterbraden.co.uk">peterbraden.co.uk</a>
-      <a href="https://github.com/peterbraden">github</a>
-    </nav>
-  </header>
-  <main class="grid">
-    <a href="orbits.html" class="card" style="--accent: #59f">
-      <div class="card-title">Orbits</div>
-      <div class="card-desc">Physics-based game: launch a spaceship through planetary gravity fields to reach a target zone.</div>
-      <div class="card-date">2010-02-15</div>
-    </a>
-    <a href="raytracer.html" class="card" style="--accent: #f95">
-      <div class="card-title">JS Raytracer</div>
-      <div class="card-desc">A raytracer in vanilla JS: Phong shading, reflections, refractions, and a checkerboard floor.</div>
-      <div class="card-date">2010-02-15</div>
-    </a>
-    <a href="isometric_canvas.html" class="card" style="--accent: #5f9">
-      <div class="card-title">Isometric Terrain</div>
-      <div class="card-desc">Procedurally generated isometric landscape with height maps, textures, and lighting.</div>
-      <div class="card-date">2010-02-15</div>
-    </a>
-    <a href="particles.html" class="card" style="--accent: #f59">
-      <div class="card-title">Particles</div>
-      <div class="card-desc">Interactive particle system attracted to the mouse cursor with momentum-based physics.</div>
-      <div class="card-date">2010-02-16</div>
-    </a>
-    <a href="maze.html" class="card" style="--accent: #95f">
-      <div class="card-title">Maze Generator</div>
-      <div class="card-desc">Procedurally generated mazes using depth-first search on a grid, with solution path.</div>
-      <div class="card-date">2010-04-08</div>
-    </a>
-    <a href="blank-canvas.html" class="card" style="--accent: #9f5">
-      <div class="card-title">Drawing with BrowserCouch</div>
-      <div class="card-desc">Canvas drawing application with persistent storage via BrowserCouch (client-side CouchDB).</div>
-      <div class="card-date">2010-04-08</div>
-    </a>
-    <a href="brot.html" class="card" style="--accent: #59f">
-      <div class="card-title">Mandelbrot Set</div>
-      <div class="card-desc">Interactive Mandelbrot fractal explorer rendered on canvas with zoom.</div>
-      <div class="card-date">2010-08-20</div>
-    </a>
-    <a href="genetics-of-a-smile.html" class="card" style="--accent: #f95">
-      <div class="card-title">Genetics of a Smile</div>
-      <div class="card-desc">A genetic algorithm evolving pixel patterns to recreate a target image.</div>
-      <div class="card-date">2010-09-01</div>
-    </a>
-    <a href="swirly.html" class="card" style="--accent: #5f9">
-      <div class="card-title">Swirly Red Worms</div>
-      <div class="card-desc">Generative art: organic flowing lines with vector-based motion and a hint of randomness.</div>
-      <div class="card-date">2010-02-15</div>
-    </a>
-    <a href="life-sim.html" class="card" style="--accent: #f59">
-      <div class="card-title">Game of Life</div>
-      <div class="card-desc">Conway's Game of Life — cellular automaton simulation on a canvas grid.</div>
-      <div class="card-date">2011-06-11</div>
-    </a>
-  </main>
+<div class="led-root">
+  <div class="led-aurora"></div>
+  <div class="led-inner">
+    <aside class="led-rail">
+      <div>
+        <div class="led-tag">// a workshop for small things</div>
+        <h1 class="led-name">Peter Braden<span class="blink">_</span></h1>
+        <p class="led-intro" id="led-intro"></p>
+      </div>
+      <div class="led-rail-bot">
+        <div class="led-links-label">// elsewhere</div>
+        <div class="led-links">
+          <a class="led-link" href="https://github.com/peterbraden">
+            <span>GitHub</span>
+            <span class="led-link-handle">@peterbraden</span>
+          </a>
+          <a class="led-link" href="https://peterbraden.co.uk">
+            <span>Homepage</span>
+            <span class="led-link-handle">peterbraden.co.uk</span>
+          </a>
+        </div>
+        <div class="led-sig">
+          <span class="led-count" id="led-count">0</span> experiments · kept since 2008
+        </div>
+      </div>
+    </aside>
+    <main class="led-list">
+      <a href="life-sim.html" class="led-row" style="animation-delay: 600ms; --glow: oklch(0.64 0.16 12 / 0.55)">
+        <div class="led-tile" style="background: linear-gradient(145deg, oklch(0.64 0.15 12), oklch(0.52 0.16 38)); animation-delay: 680ms">
+          <span class="led-tile-pat" style="background-image: radial-gradient(rgba(0,0,0,.16) 1.5px,transparent 1.7px) 0 0/13px 13px"></span>
+          <span class="led-tile-num">01</span>
+        </div>
+        <div class="led-body">
+          <div class="led-title">Game of Life</div>
+          <div class="led-desc">Conway's Game of Life — cellular automaton evolving across a canvas grid.</div>
+        </div>
+        <div class="led-meta">
+          <span class="led-date">June 2011</span>
+          <span class="led-tags">·simulation ·cellular-automata</span>
+        </div>
+        <span class="led-arrow">→</span>
+      </a>
+      <a href="genetics-of-a-smile.html" class="led-row" style="animation-delay: 670ms; --glow: oklch(0.64 0.16 48 / 0.55)">
+        <div class="led-tile" style="background: linear-gradient(145deg, oklch(0.64 0.15 48), oklch(0.52 0.16 74)); animation-delay: 750ms">
+          <span class="led-tile-pat" style="background-image: repeating-linear-gradient(45deg,rgba(0,0,0,.16) 0 1.5px,transparent 1.5px 11px)"></span>
+          <span class="led-tile-num">02</span>
+        </div>
+        <div class="led-body">
+          <div class="led-title">Genetics of a Smile</div>
+          <div class="led-desc">A genetic algorithm that evolves pixel patterns to recreate a target image.</div>
+        </div>
+        <div class="led-meta">
+          <span class="led-date">September 2010</span>
+          <span class="led-tags">·algorithms ·ai</span>
+        </div>
+        <span class="led-arrow">→</span>
+      </a>
+      <a href="brot.html" class="led-row" style="animation-delay: 740ms; --glow: oklch(0.64 0.16 92 / 0.55)">
+        <div class="led-tile" style="background: linear-gradient(145deg, oklch(0.64 0.15 92), oklch(0.52 0.16 118)); animation-delay: 820ms">
+          <span class="led-tile-pat" style="background-image: linear-gradient(rgba(0,0,0,.16) 1px,transparent 1px) 0 0/100% 11px"></span>
+          <span class="led-tile-num">03</span>
+        </div>
+        <div class="led-body">
+          <div class="led-title">Mandelbrot Set</div>
+          <div class="led-desc">Interactive Mandelbrot fractal explorer rendered on canvas with zoom.</div>
+        </div>
+        <div class="led-meta">
+          <span class="led-date">August 2010</span>
+          <span class="led-tags">·fractals ·generative</span>
+        </div>
+        <span class="led-arrow">→</span>
+      </a>
+      <a href="maze.html" class="led-row" style="animation-delay: 810ms; --glow: oklch(0.64 0.16 152 / 0.55)">
+        <div class="led-tile" style="background: linear-gradient(145deg, oklch(0.64 0.15 152), oklch(0.52 0.16 178)); animation-delay: 890ms">
+          <span class="led-tile-pat" style="background-image: conic-gradient(rgba(0,0,0,.16) 0 25%,transparent 0 50%,rgba(0,0,0,.16) 0 75%,transparent 0) 0 0/16px 16px"></span>
+          <span class="led-tile-num">04</span>
+        </div>
+        <div class="led-body">
+          <div class="led-title">Maze Generator</div>
+          <div class="led-desc">Procedurally generated mazes using depth-first search, with solution path.</div>
+        </div>
+        <div class="led-meta">
+          <span class="led-date">April 2010</span>
+          <span class="led-tags">·algorithms ·generative</span>
+        </div>
+        <span class="led-arrow">→</span>
+      </a>
+      <a href="blank-canvas.html" class="led-row" style="animation-delay: 880ms; --glow: oklch(0.64 0.16 196 / 0.55)">
+        <div class="led-tile" style="background: linear-gradient(145deg, oklch(0.64 0.15 196), oklch(0.52 0.16 222)); animation-delay: 960ms">
+          <span class="led-tile-pat" style="background-image: radial-gradient(rgba(0,0,0,.16) 1.5px,transparent 1.7px) 0 0/13px 13px"></span>
+          <span class="led-tile-num">05</span>
+        </div>
+        <div class="led-body">
+          <div class="led-title">Drawing with BrowserCouch</div>
+          <div class="led-desc">Canvas drawing app with persistent storage via BrowserCouch, a client-side CouchDB.</div>
+        </div>
+        <div class="led-meta">
+          <span class="led-date">April 2010</span>
+          <span class="led-tags">·canvas ·tool</span>
+        </div>
+        <span class="led-arrow">→</span>
+      </a>
+      <a href="particles.html" class="led-row" style="animation-delay: 950ms; --glow: oklch(0.64 0.16 238 / 0.55)">
+        <div class="led-tile" style="background: linear-gradient(145deg, oklch(0.64 0.15 238), oklch(0.52 0.16 264)); animation-delay: 1030ms">
+          <span class="led-tile-pat" style="background-image: repeating-linear-gradient(45deg,rgba(0,0,0,.16) 0 1.5px,transparent 1.5px 11px)"></span>
+          <span class="led-tile-num">06</span>
+        </div>
+        <div class="led-body">
+          <div class="led-title">Particles</div>
+          <div class="led-desc">Interactive particle system attracted to the mouse cursor with momentum physics.</div>
+        </div>
+        <div class="led-meta">
+          <span class="led-date">February 2010</span>
+          <span class="led-tags">·physics ·interactive</span>
+        </div>
+        <span class="led-arrow">→</span>
+      </a>
+      <a href="orbits.html" class="led-row" style="animation-delay: 1020ms; --glow: oklch(0.64 0.16 286 / 0.55)">
+        <div class="led-tile" style="background: linear-gradient(145deg, oklch(0.64 0.15 286), oklch(0.52 0.16 312)); animation-delay: 1100ms">
+          <span class="led-tile-pat" style="background-image: linear-gradient(rgba(0,0,0,.16) 1px,transparent 1px) 0 0/100% 11px"></span>
+          <span class="led-tile-num">07</span>
+        </div>
+        <div class="led-body">
+          <div class="led-title">Orbits</div>
+          <div class="led-desc">Physics game: launch a spaceship through planetary gravity fields to reach a target zone.</div>
+        </div>
+        <div class="led-meta">
+          <span class="led-date">February 2010</span>
+          <span class="led-tags">·physics ·game</span>
+        </div>
+        <span class="led-arrow">→</span>
+      </a>
+      <a href="raytracer.html" class="led-row" style="animation-delay: 1090ms; --glow: oklch(0.64 0.16 330 / 0.55)">
+        <div class="led-tile" style="background: linear-gradient(145deg, oklch(0.64 0.15 330), oklch(0.52 0.16 356)); animation-delay: 1170ms">
+          <span class="led-tile-pat" style="background-image: conic-gradient(rgba(0,0,0,.16) 0 25%,transparent 0 50%,rgba(0,0,0,.16) 0 75%,transparent 0) 0 0/16px 16px"></span>
+          <span class="led-tile-num">08</span>
+        </div>
+        <div class="led-body">
+          <div class="led-title">JS Raytracer</div>
+          <div class="led-desc">A raytracer in vanilla JS with Phong shading, reflections, refractions, and a checkerboard floor.</div>
+        </div>
+        <div class="led-meta">
+          <span class="led-date">February 2010</span>
+          <span class="led-tags">·graphics ·3d</span>
+        </div>
+        <span class="led-arrow">→</span>
+      </a>
+      <a href="isometric_canvas.html" class="led-row" style="animation-delay: 1160ms; --glow: oklch(0.64 0.16 12 / 0.55)">
+        <div class="led-tile" style="background: linear-gradient(145deg, oklch(0.64 0.15 12), oklch(0.52 0.16 38)); animation-delay: 1240ms">
+          <span class="led-tile-pat" style="background-image: radial-gradient(rgba(0,0,0,.16) 1.5px,transparent 1.7px) 0 0/13px 13px"></span>
+          <span class="led-tile-num">09</span>
+        </div>
+        <div class="led-body">
+          <div class="led-title">Isometric Terrain</div>
+          <div class="led-desc">Procedurally generated isometric landscape with height maps, textures, and lighting.</div>
+        </div>
+        <div class="led-meta">
+          <span class="led-date">February 2010</span>
+          <span class="led-tags">·graphics ·generative</span>
+        </div>
+        <span class="led-arrow">→</span>
+      </a>
+      <a href="swirly.html" class="led-row" style="animation-delay: 1230ms; --glow: oklch(0.64 0.16 48 / 0.55)">
+        <div class="led-tile" style="background: linear-gradient(145deg, oklch(0.64 0.15 48), oklch(0.52 0.16 74)); animation-delay: 1310ms">
+          <span class="led-tile-pat" style="background-image: repeating-linear-gradient(45deg,rgba(0,0,0,.16) 0 1.5px,transparent 1.5px 11px)"></span>
+          <span class="led-tile-num">10</span>
+        </div>
+        <div class="led-body">
+          <div class="led-title">Swirly Red Worms</div>
+          <div class="led-desc">Generative art: organic flowing lines with vector-based motion and a hint of randomness.</div>
+        </div>
+        <div class="led-meta">
+          <span class="led-date">February 2010</span>
+          <span class="led-tags">·generative ·art</span>
+        </div>
+        <span class="led-arrow">→</span>
+      </a>
+    </main>
+  </div>
+</div>
+<script>
+(function () {
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Typewriter intro
+  var text = 'A workshop for small experiments. Pages here are vibe-coded, mostly unfinished, kept around because they were fun to make.';
+  var el = document.getElementById('led-intro');
+  if (reduce) {
+    el.textContent = text;
+  } else {
+    var i = 0;
+    var caret = document.createElement('span');
+    caret.className = 'led-caret';
+    el.appendChild(caret);
+    var timer;
+    function tick() {
+      el.textContent = text.slice(0, i);
+      el.appendChild(caret);
+      i++;
+      if (i <= text.length) {
+        timer = setTimeout(tick, 22 + (text[i - 1] === ' ' ? 18 : 0));
+      } else {
+        caret.remove();
+      }
+    }
+    setTimeout(tick, 450);
+  }
+
+  // Count-up
+  var countEl = document.getElementById('led-count');
+  var target = 10;
+  if (reduce) {
+    countEl.textContent = target;
+  } else {
+    var t0 = null;
+    setTimeout(function () {
+      requestAnimationFrame(function step(t) {
+        if (!t0) t0 = t;
+        var p = Math.min((t - t0) / 1100, 1);
+        var eased = 1 - Math.pow(1 - p, 3);
+        countEl.textContent = Math.round(eased * target);
+        if (p < 1) requestAnimationFrame(step);
+      });
+    }, 950);
+  }
+})();
+</script>
 </body>
 </html>
