@@ -22,7 +22,7 @@ get_pattern() {
   esac
 }
 
-# ---- header (no variable expansion needed) ----
+# ---- header ----
 cat > "$OUTPUT" <<'HEADER'
 <!doctype html>
 <html lang="en">
@@ -33,7 +33,13 @@ cat > "$OUTPUT" <<'HEADER'
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="ledger.css">
+  <style>
+HEADER
+
+cat ledger.css >> "$OUTPUT"
+
+cat >> "$OUTPUT" <<'HEADER'
+  </style>
 </head>
 <body>
 <div class="led-root">
