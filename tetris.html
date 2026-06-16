@@ -109,31 +109,24 @@ function cp() {
 // ── PhysCell ───────────────────────────────────────────────────────────────
 // phase: 'fly' | 'rest' | 'die'
 // x, y are the pixel CENTRE of the cell.
-// angle is visual rotation in radians (also affects collision footprint).
+// angle is purely visual — collision always uses plain CELL/2 boxes.
 function makeCell(x, y, color) {
   return { x, y, vx:0, vy:0, angle:0, av:0, color,
            phase:'fly', sc:0, alpha:1, scale:1 };
 }
 
-// Projected half-width/height of a rotated CELL×CELL square onto the axes.
-// Used for AABB-like coverage and rough collision, accounting for angle.
+// Projected half-width of a rotated square — used ONLY for line-clear coverage.
 function projW(angle) { return CELL/2 * (Math.abs(Math.cos(angle)) + Math.abs(Math.sin(angle))); }
-function projH(angle) { return projW(angle); } // square → same
 
 // ── physGrid ───────────────────────────────────────────────────────────────
 function rebuildPhysGrid() {
   physGrid = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
   for (const c of cells) {
     if (c.phase !== 'rest') continue;
-    // Use the cell's actual projected footprint to mark grid cells
-    const hw = projW(c.angle), hh = projH(c.angle);
-    const c0 = Math.floor((c.x - hw) / CELL);
-    const c1 = Math.floor((c.x + hw) / CELL);
-    const r0 = Math.floor((c.y - hh) / CELL);
-    const r1 = Math.floor((c.y + hh) / CELL);
-    for (let r = Math.max(0,r0); r <= Math.min(ROWS-1,r1); r++)
-      for (let col = Math.max(0,c0); col <= Math.min(COLS-1,c1); col++)
-        physGrid[r][col] = true;
+    // Map cell centre to the grid square it sits in (axis-aligned, no rotation).
+    const r   = Math.floor(c.y / CELL);
+    const col = Math.floor(c.x / CELL);
+    if (r >= 0 && r < ROWS && col >= 0 && col < COLS) physGrid[r][col] = true;
   }
 }
 
@@ -221,13 +214,12 @@ function checkLineClear() {
     const ivs = [];
     for (const c of cells) {
       if (c.phase !== 'rest') continue;
-      const hw = projW(c.angle), hh = projH(c.angle);
-      const cy1 = c.y - hh, cy2 = c.y + hh;
-      if (cy1 >= y2 || cy2 <= y1) continue;
-      // fraction of cell height overlapping this band
-      const overlap = (Math.min(cy2,y2) - Math.max(cy1,y1)) / (hh*2);
-      if (overlap < 0.35) continue; // must overlap substantially
-      // horizontal projection
+      // Vertical membership: cell centre must be within band (plain CELL/2)
+      if (c.y - CELL/2 >= y2 || c.y + CELL/2 <= y1) continue;
+      const overlap = (Math.min(c.y+CELL/2,y2) - Math.max(c.y-CELL/2,y1)) / CELL;
+      if (overlap < 0.35) continue;
+      // Horizontal projection uses rotation — angled cells cover more width
+      const hw = projW(c.angle);
       ivs.push([Math.max(0, c.x-hw), Math.min(W, c.x+hw)]);
     }
     if (mergedCoverage(ivs) >= W * CLEAR_FRAC) {
@@ -250,13 +242,10 @@ function clearBand(y1, y2) {
   spawnClearParticles(y1, y2);
   const p = cp();
 
-  // Kill every resting cell that significantly overlaps the band
+  // Kill every resting cell whose centre overlaps the band
   for (const c of cells) {
     if (c.phase === 'die') continue;
-    const hh = projH(c.angle);
-    if (c.y+hh <= y1 || c.y-hh >= y2) continue;
-    const overlap = (Math.min(c.y+hh,y2) - Math.max(c.y-hh,y1)) / (hh*2);
-    if (overlap < 0.35) continue;
+    if (c.y + CELL/2 <= y1 || c.y - CELL/2 >= y2) continue;
     c.phase = 'die'; c.alpha = 1; c.scale = 1;
     c.vx = (Math.random()-0.5)*18; c.vy = -4-Math.random()*9;
     c.av = (Math.random()-0.5)*2.5;
@@ -266,8 +255,7 @@ function clearBand(y1, y2) {
   const f = Math.max(0.15, p.impulse * 0.6);
   for (const c of cells) {
     if (c.phase !== 'rest') continue;
-    const hh = projH(c.angle);
-    if (c.y - hh >= y1) continue; // not above band
+    if (c.y >= y1) continue; // not above band
     c.phase = 'fly'; c.sc = 0;
     c.vy = 1.5 + Math.random()*2*f;
     c.vx = (Math.random()-0.5)*2*f;
@@ -373,13 +361,11 @@ function updatePhysics(dt) {
 
 // Returns true if collision occurred.
 // bStatic=true → only 'a' moves; 'b' is static but can be woken by caller.
+// Collision uses plain CELL/2 half-extents regardless of rotation.
 function collide(a, b, rest, bStatic) {
-  // Use projected footprints (handles rotation approximately)
-  const ahw = projW(a.angle), ahh = projH(a.angle);
-  const bhw = projW(b.angle), bhh = projH(b.angle);
   const dx = b.x-a.x, dy = b.y-a.y;
-  const ox = (ahw+bhw) - Math.abs(dx);
-  const oy = (ahh+bhh) - Math.abs(dy);
+  const ox = CELL - Math.abs(dx);
+  const oy = CELL - Math.abs(dy);
   if (ox <= 0 || oy <= 0) return false;
 
   const r=rest*0.60, fr=0.78;
@@ -422,10 +408,10 @@ function drawCoverageHints() {
     const ivs = [];
     for (const c of cells) {
       if (c.phase !== 'rest') continue;
-      const hw=projW(c.angle), hh=projH(c.angle);
-      if (c.y+hh<=y1 || c.y-hh>=y2) continue;
-      const ov=(Math.min(c.y+hh,y2)-Math.max(c.y-hh,y1))/(hh*2);
+      if (c.y+CELL/2<=y1 || c.y-CELL/2>=y2) continue;
+      const ov=(Math.min(c.y+CELL/2,y2)-Math.max(c.y-CELL/2,y1))/CELL;
       if (ov<0.35) continue;
+      const hw=projW(c.angle);
       ivs.push([Math.max(0,c.x-hw), Math.min(W,c.x+hw)]);
     }
     const cov = mergedCoverage(ivs) / W;
