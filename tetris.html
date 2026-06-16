@@ -55,11 +55,14 @@ body { background: #0a0a0f; display: flex; justify-content: center; align-items:
 <script>
 const COLS = 10, ROWS = 20, CELL = 30;
 const W = COLS * CELL, H = ROWS * CELL;
+// A horizontal band needs this fraction of its width covered to clear.
+// Angled cells are wider in projection, so they help fill gaps.
+const CLEAR_FRAC = 0.88;
 
 const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+const ctx    = canvas.getContext('2d');
 const nextCanvas = document.getElementById('nextCanvas');
-const nctx = nextCanvas.getContext('2d');
+const nctx   = nextCanvas.getContext('2d');
 
 const PIECES = [
   { shape: [[1,1,1,1]],         color: '#0ef' },
@@ -71,63 +74,77 @@ const PIECES = [
   { shape: [[1,1,0],[0,1,1]],   color: '#f22' },
 ];
 
-// ── state ──────────────────────────────────────────────────────────────────
-let grid;        // grid[r][c] = color | null  — game logic only
-let cells;       // PhysCell[] — visual layer
+// ── state ─────────────────────────────────────────────────────────────────
+let cells;       // PhysCell[]   – the only source of truth for piece positions
+let physGrid;    // bool[][]     – rebuilt each frame from resting cells, used by active piece
 let particles;
 let active, nextPiece;
 let score, level, lines, chaos;
 let gameRunning, dropTimer, dropInterval, lastTime;
 let shakeT = 0, shakeX = 0, shakeY = 0;
+let pendingClear = false; // flag: check line clears next physics tick
 
 function initState() {
-  grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
-  cells = [];
-  particles = [];
+  cells = []; particles = [];
+  physGrid = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
   score = 0; level = 1; lines = 0; chaos = 0;
   dropTimer = 0; dropInterval = 800;
-  shakeT = 0; shakeX = 0; shakeY = 0;
+  shakeT = 0; shakeX = 0; shakeY = 0; pendingClear = false;
 }
 
-// ── chaos parameters ────────────────────────────────────────────────────────
+// ── chaos parameters ───────────────────────────────────────────────────────
 function cp() {
-  const f = chaos / 10;                         // 0..1
+  const f = chaos / 10;
   return {
-    flyMs:       200 + f * 5800,                // ms of real physics before homing
-    gravity:     0.07 + f * 0.53,               // px / frame²
-    restitution: 0.15 + f * 0.60,               // bounciness
-    friction:    0.88 - f * 0.08,               // floor/wall friction
-    impulse:     f,                              // impulse scale
-    homeLerp:    0.14 - f * 0.08,               // lerp speed back to grid (0.06..0.14)
-    breakApart:  chaos >= 7,                     // cells scatter on landing
+    gravity:      0.04 + f * 0.52,          // px/frame²  (0.04 → 0.56)
+    restitution:  0.12 + f * 0.63,          // bounciness (0.12 → 0.75)
+    friction:     0.88 - f * 0.09,          // lateral damping on contact
+    impulse:      f * 1.3,                   // landing impulse scale
+    breakApart:   chaos >= 7,               // cells scatter individually
+    wakeSpeed:    chaos >= 6 ? 2 + f*5 : 1e9, // min speed to disturb resting cell
+    settleFrames: Math.max(6, 28 - chaos*2), // consecutive slow frames to settle
   };
 }
 
-// ── PhysCell factory ────────────────────────────────────────────────────────
-// phase: 'fly' | 'home' | 'rest' | 'die'
-function makeCell(gr, gc, color) {
-  return {
-    gr, gc, color,
-    x: gc * CELL + CELL / 2,
-    y: gr * CELL + CELL / 2,
-    vx: 0, vy: 0,
-    angle: 0, av: 0,
-    phase: 'fly',
-    flyMs: 0,           // accumulated ms in fly phase
-    alpha: 1, scale: 1,
-  };
+// ── PhysCell ───────────────────────────────────────────────────────────────
+// phase: 'fly' | 'rest' | 'die'
+// x, y are the pixel CENTRE of the cell.
+// angle is visual rotation in radians (also affects collision footprint).
+function makeCell(x, y, color) {
+  return { x, y, vx:0, vy:0, angle:0, av:0, color,
+           phase:'fly', sc:0, alpha:1, scale:1 };
 }
 
-// ── tetromino helpers ───────────────────────────────────────────────────────
+// Projected half-width/height of a rotated CELL×CELL square onto the axes.
+// Used for AABB-like coverage and rough collision, accounting for angle.
+function projW(angle) { return CELL/2 * (Math.abs(Math.cos(angle)) + Math.abs(Math.sin(angle))); }
+function projH(angle) { return projW(angle); } // square → same
+
+// ── physGrid ───────────────────────────────────────────────────────────────
+function rebuildPhysGrid() {
+  physGrid = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+  for (const c of cells) {
+    if (c.phase !== 'rest') continue;
+    // Use the cell's actual projected footprint to mark grid cells
+    const hw = projW(c.angle), hh = projH(c.angle);
+    const c0 = Math.floor((c.x - hw) / CELL);
+    const c1 = Math.floor((c.x + hw) / CELL);
+    const r0 = Math.floor((c.y - hh) / CELL);
+    const r1 = Math.floor((c.y + hh) / CELL);
+    for (let r = Math.max(0,r0); r <= Math.min(ROWS-1,r1); r++)
+      for (let col = Math.max(0,c0); col <= Math.min(COLS-1,c1); col++)
+        physGrid[r][col] = true;
+  }
+}
+
+// ── pieces ─────────────────────────────────────────────────────────────────
 function newPiece() {
   const d = PIECES[Math.floor(Math.random() * PIECES.length)];
   return { shape: d.shape.map(r => [...r]), color: d.color,
            r: 0, c: Math.floor((COLS - d.shape[0].length) / 2) };
 }
 
-function rotateCW(s) {
-  return s[0].map((_, c) => s.map(r => r[c]).reverse());
-}
+function rotateCW(s) { return s[0].map((_, c) => s.map(r => r[c]).reverse()); }
 
 function validPos(shape, r, c) {
   for (let row = 0; row < shape.length; row++)
@@ -135,256 +152,293 @@ function validPos(shape, r, c) {
       if (!shape[row][col]) continue;
       const nr = r + row, nc = c + col;
       if (nr >= ROWS || nc < 0 || nc >= COLS) return false;
-      if (nr >= 0 && grid[nr][nc]) return false;
+      if (nr >= 0 && physGrid[nr][nc]) return false;
     }
   return true;
 }
 
-// ── locking ─────────────────────────────────────────────────────────────────
+// ── locking ────────────────────────────────────────────────────────────────
 function lockPiece() {
   const { shape, color, r, c } = active;
   const p = cp();
 
-  // Collect cells of this piece
-  const pieceCells = [];
+  const pcs = [];
   for (let row = 0; row < shape.length; row++)
-    for (let col = 0; col < shape[row].length; col++) {
-      if (!shape[row][col]) continue;
-      const gr = r + row, gc = c + col;
-      if (gr < 0) { triggerGameOver(); return; }
-      pieceCells.push({ gr, gc });
-    }
+    for (let col = 0; col < shape[row].length; col++)
+      if (shape[row][col]) pcs.push({ gr: r+row, gc: c+col });
 
-  // Update logic grid immediately
-  for (const { gr, gc } of pieceCells) grid[gr][gc] = color;
+  if (pcs.some(b => b.gr < 0)) { endGame(); return; }
 
-  // Centre of mass of this piece
-  const cxF = pieceCells.reduce((s, b) => s + b.gc, 0) / pieceCells.length;
-  const cyF = pieceCells.reduce((s, b) => s + b.gr, 0) / pieceCells.length;
+  const cxF = pcs.reduce((s,b) => s+b.gc, 0) / pcs.length;
+  const cyF = pcs.reduce((s,b) => s+b.gr, 0) / pcs.length;
 
-  // Create/replace physics cells
-  for (const { gr, gc } of pieceCells) {
-    cells = cells.filter(c => !(c.gr === gr && c.gc === gc && c.phase !== 'die'));
-    const cell = makeCell(gr, gc, color);
-    cell.flyMs = 0;
+  for (const { gr, gc } of pcs) {
+    const cell = makeCell(gc*CELL + CELL/2, gr*CELL + CELL/2, color);
 
-    if (p.impulse > 0) {
-      const ax = gc - cxF, ay = gr - cyF;
-      const d = Math.sqrt(ax * ax + ay * ay) || 1;
-      if (p.breakApart) {
-        // each cell scatters independently
-        cell.vx = ax / d * 7 * p.impulse + (Math.random() - 0.5) * 9 * p.impulse;
-        cell.vy = -(Math.random() * 8 + 2) * p.impulse;
-        cell.av = (Math.random() - 0.5) * 0.3 * p.impulse;
-      } else {
-        cell.vx = (Math.random() - 0.5) * 7 * p.impulse;
-        cell.vy = -(Math.random() * 5 + 1) * p.impulse;
-        cell.av = (Math.random() - 0.5) * 0.15 * p.impulse;
-      }
+    if (p.impulse <= 0) {
+      // chaos 0: no physics, sit immediately
+      cell.phase = 'rest';
+    } else if (p.breakApart) {
+      // high chaos: scatter outward from centre
+      const ax = gc - cxF, ay = gr - cyF, d = Math.sqrt(ax*ax+ay*ay)||1;
+      cell.vx = ax/d*8*p.impulse + (Math.random()-0.5)*10*p.impulse;
+      cell.vy = -(Math.random()*9+2) * p.impulse;
+      cell.av = (Math.random()-0.5) * 0.35 * p.impulse;
+    } else {
+      // medium chaos: bounce as a group
+      cell.vx = (Math.random()-0.5) * 7 * p.impulse;
+      cell.vy = -(Math.random()*5+1) * p.impulse;
+      cell.av = (Math.random()-0.5) * 0.18 * p.impulse;
     }
     cells.push(cell);
   }
 
-  if (chaos >= 7) addShake(0.5 + (chaos - 7) * 0.25);
+  if (chaos >= 6) addShake(0.35 + (chaos-6)*0.2);
 
-  clearLines();
-
-  active = nextPiece;
-  nextPiece = newPiece();
-  if (!validPos(active.shape, active.r, active.c)) { triggerGameOver(); return; }
+  active     = nextPiece;
+  nextPiece  = newPiece();
+  pendingClear = true;
   updateUI(); drawNext();
 }
 
-function clearLines() {
-  let cleared = 0;
-  for (let row = ROWS - 1; row >= 0; row--) {
-    if (!grid[row].every(v => v !== null)) continue;
-
-    spawnClearParticles(row);
-
-    // kill phys cells on this row
-    for (const c of cells) {
-      if (c.gr === row && c.phase !== 'die') {
-        c.phase = 'die';
-        c.alpha = 1; c.scale = 1;
-        c.vx = (Math.random() - 0.5) * 18;
-        c.vy = -4 - Math.random() * 9;
-        c.av = (Math.random() - 0.5) * 2.5;
-      }
-    }
-
-    // update logic grid
-    grid.splice(row, 1);
-    grid.unshift(Array(COLS).fill(null));
-
-    // shift phys cells above this row down; wake settled ones
-    const f = Math.max(0, (chaos - 3) / 7);
-    for (const c of cells) {
-      if (c.phase === 'die' || c.gr >= row) continue;
-      c.gr++;
-      if (f > 0) {
-        if (c.phase === 'rest') {
-          c.phase = 'fly'; c.flyMs = 0;
-          c.vy = 2 + Math.random() * 4 * f;
-          c.vx = (Math.random() - 0.5) * 3 * f;
-          c.av = (Math.random() - 0.5) * 0.1 * f;
-        } else {
-          c.vy += 1.5 + Math.random() * 2 * f;
-        }
-      }
-    }
-
-    cleared++;
-    row++; // recheck after splice
+// ── line clearing (coverage-based, no grid) ────────────────────────────────
+function mergedCoverage(ivs) {
+  if (!ivs.length) return 0;
+  ivs.sort((a,b) => a[0]-b[0]);
+  let total=0, lo=ivs[0][0], hi=ivs[0][1];
+  for (const [a,b] of ivs) {
+    if (a > hi) { total += hi-lo; lo=a; hi=b; }
+    else if (b > hi) hi = b;
   }
+  return total + hi - lo;
+}
 
+function checkLineClear() {
+  let cleared = 0;
+  // Scan bands from bottom up
+  for (let row = ROWS-1; row >= 0; row--) {
+    const y1 = row * CELL, y2 = y1 + CELL;
+    const ivs = [];
+    for (const c of cells) {
+      if (c.phase !== 'rest') continue;
+      const hw = projW(c.angle), hh = projH(c.angle);
+      const cy1 = c.y - hh, cy2 = c.y + hh;
+      if (cy1 >= y2 || cy2 <= y1) continue;
+      // fraction of cell height overlapping this band
+      const overlap = (Math.min(cy2,y2) - Math.max(cy1,y1)) / (hh*2);
+      if (overlap < 0.35) continue; // must overlap substantially
+      // horizontal projection
+      ivs.push([Math.max(0, c.x-hw), Math.min(W, c.x+hw)]);
+    }
+    if (mergedCoverage(ivs) >= W * CLEAR_FRAC) {
+      clearBand(y1, y2);
+      cleared++;
+    }
+  }
   if (cleared > 0) {
-    score += [0, 100, 300, 500, 800][Math.min(cleared, 4)] * level;
+    score += [0,100,300,500,800][Math.min(cleared,4)] * level;
     lines += cleared;
-    level  = Math.floor(lines / 10) + 1;
-    chaos  = Math.min(10, Math.floor(lines / 4));
-    dropInterval = Math.max(80, 800 - (level - 1) * 65);
-    if (chaos >= 8) addShake(0.7);
-    updateChaosBar();
+    level  = Math.floor(lines/10)+1;
+    chaos  = Math.min(10, Math.floor(lines/4));
+    dropInterval = Math.max(80, 800-(level-1)*65);
+    if (chaos >= 7) addShake(0.65);
+    updateChaosBar(); updateUI();
   }
 }
 
-// ── physics update ──────────────────────────────────────────────────────────
+function clearBand(y1, y2) {
+  spawnClearParticles(y1, y2);
+  const p = cp();
+
+  // Kill every resting cell that significantly overlaps the band
+  for (const c of cells) {
+    if (c.phase === 'die') continue;
+    const hh = projH(c.angle);
+    if (c.y+hh <= y1 || c.y-hh >= y2) continue;
+    const overlap = (Math.min(c.y+hh,y2) - Math.max(c.y-hh,y1)) / (hh*2);
+    if (overlap < 0.35) continue;
+    c.phase = 'die'; c.alpha = 1; c.scale = 1;
+    c.vx = (Math.random()-0.5)*18; c.vy = -4-Math.random()*9;
+    c.av = (Math.random()-0.5)*2.5;
+  }
+
+  // Wake resting cells above the band so they fall into the gap
+  const f = Math.max(0.15, p.impulse * 0.6);
+  for (const c of cells) {
+    if (c.phase !== 'rest') continue;
+    const hh = projH(c.angle);
+    if (c.y - hh >= y1) continue; // not above band
+    c.phase = 'fly'; c.sc = 0;
+    c.vy = 1.5 + Math.random()*2*f;
+    c.vx = (Math.random()-0.5)*2*f;
+    c.av = (Math.random()-0.5)*0.05*f;
+  }
+}
+
+function spawnClearParticles(y1, y2) {
+  const count = 4 + Math.floor(chaos*1.4);
+  const y = (y1+y2)/2;
+  for (let col = 0; col < COLS; col++) {
+    const x = col*CELL + CELL/2;
+    for (let i = 0; i < count; i++) {
+      particles.push({ x, y,
+        color: `hsl(${Math.random()*360},100%,65%)`,
+        vx: (Math.random()-0.5)*(10+chaos*2),
+        vy: (Math.random()-1.4)*(9+chaos*2),
+        life:1, decay:0.016+Math.random()*0.03, size:2+Math.random()*4 });
+    }
+  }
+}
+
+// ── physics ────────────────────────────────────────────────────────────────
 function updatePhysics(dt) {
   const p = cp();
 
-  // ── flying cells: real gravity + bounce ───────────────────────────────────
-  const flying = cells.filter(c => c.phase === 'fly');
+  const flying  = cells.filter(c => c.phase === 'fly');
+  const resting = cells.filter(c => c.phase === 'rest');
+
+  // Integrate flying cells
   for (const c of flying) {
-    c.flyMs += dt;
-    if (c.flyMs >= p.flyMs) { c.phase = 'home'; continue; }
-
     c.vy += p.gravity;
-    c.x  += c.vx;
-    c.y  += c.vy;
-    c.angle += c.av;
-    c.av *= 0.97;
+    c.x  += c.vx;  c.y  += c.vy;
+    c.angle += c.av; c.av *= 0.97;
 
-    // floor
-    if (c.y + CELL / 2 > H) {
-      c.y = H - CELL / 2;
+    // Floor
+    if (c.y + CELL/2 > H) {
+      c.y = H - CELL/2;
       if (Math.abs(c.vy) > 0.6) {
-        c.vy = -Math.abs(c.vy) * p.restitution;
+        c.vy  = -Math.abs(c.vy) * p.restitution;
         c.vx *= p.friction;
-        c.av += c.vx * 0.025;
+        c.av += c.vx * 0.02;
       } else { c.vy = 0; c.vx *= 0.80; }
     }
-    // walls
-    if (c.x - CELL / 2 < 0)  { c.x = CELL / 2;     c.vx =  Math.abs(c.vx) * p.restitution; c.av = -c.av * 0.5; }
-    if (c.x + CELL / 2 > W)  { c.x = W - CELL / 2; c.vx = -Math.abs(c.vx) * p.restitution; c.av = -c.av * 0.5; }
-    // ceiling
-    if (c.y - CELL / 2 < 0)  { c.y = CELL / 2; if (c.vy < 0) c.vy = Math.abs(c.vy) * 0.2; }
+    // Walls
+    if (c.x - CELL/2 < 0) { c.x = CELL/2;     c.vx =  Math.abs(c.vx)*p.restitution; c.av=-c.av*0.4; }
+    if (c.x + CELL/2 > W) { c.x = W-CELL/2;   c.vx = -Math.abs(c.vx)*p.restitution; c.av=-c.av*0.4; }
+    if (c.y - CELL/2 < 0) { c.y = CELL/2;      if(c.vy<0) c.vy=Math.abs(c.vy)*0.2; }
+
+    // Settle
+    const spd = Math.sqrt(c.vx*c.vx + c.vy*c.vy);
+    if (spd < 0.32 && Math.abs(c.av) < 0.015) {
+      c.sc++;
+      if (c.sc >= p.settleFrames) {
+        c.vx=0; c.vy=0; c.av=0; c.phase='rest';
+        pendingClear = true;
+      }
+    } else { c.sc = 0; }
   }
 
-  // ── cell-cell collision: flying vs flying + flying vs settled ─────────────
-  const resting = cells.filter(c => c.phase === 'rest');
-  for (let i = 0; i < flying.length; i++) {
-    for (let j = i + 1; j < flying.length; j++) {
+  // Cell-cell collisions: flying vs flying
+  for (let i = 0; i < flying.length; i++)
+    for (let j = i+1; j < flying.length; j++)
       collide(flying[i], flying[j], p.restitution, false);
-    }
-    for (const s of resting) {
-      collide(flying[i], s, p.restitution, true);   // settled = static
+
+  // Cell-cell: flying vs resting (resting is static; may wake up)
+  for (const fc of flying) {
+    const spd = Math.sqrt(fc.vx*fc.vx + fc.vy*fc.vy);
+    for (const rc of resting) {
+      if (collide(fc, rc, p.restitution, true) && spd > p.wakeSpeed) {
+        rc.phase='fly'; rc.sc=0;
+        rc.vx = fc.vx*0.30; rc.vy = fc.vy*0.30;
+        rc.av = (Math.random()-0.5)*0.08;
+      }
     }
   }
 
-  // ── homing: lerp back to canonical grid position ──────────────────────────
-  for (const c of cells) {
-    if (c.phase !== 'home') continue;
-    const tx = c.gc * CELL + CELL / 2;
-    const ty = c.gr * CELL + CELL / 2;
-    c.x += (tx - c.x) * p.homeLerp;
-    c.y += (ty - c.y) * p.homeLerp;
-    c.angle *= 0.88;
-    if (Math.abs(tx - c.x) < 0.5 && Math.abs(ty - c.y) < 0.5) {
-      c.x = tx; c.y = ty; c.angle = 0;
-      c.phase = 'rest';
-    }
-  }
-
-  // ── dying ─────────────────────────────────────────────────────────────────
+  // Dying cells animate away
   for (const c of cells) {
     if (c.phase !== 'die') continue;
-    c.vy += 0.5;
-    c.x  += c.vx;  c.y += c.vy;
+    c.vy += 0.5; c.x += c.vx; c.y += c.vy;
     c.angle += c.av; c.av *= 0.97; c.vx *= 0.97;
-    c.alpha  -= 0.022;
-    c.scale   = 0.3 + c.alpha * 0.7;
+    c.alpha -= 0.022; c.scale = 0.3 + c.alpha*0.7;
   }
   cells = cells.filter(c => c.phase !== 'die' || c.alpha > 0);
 
-  // ── screen shake ──────────────────────────────────────────────────────────
-  if (shakeT > 0) {
-    shakeT = Math.max(0, shakeT - 0.06);
-    shakeX = (Math.random() - 0.5) * shakeT * 15;
-    shakeY = (Math.random() - 0.5) * shakeT * 15;
-  } else { shakeX = 0; shakeY = 0; }
+  // Deferred line-clear check (after cells settle)
+  if (pendingClear) { pendingClear = false; checkLineClear(); }
 
-  // ── particles ─────────────────────────────────────────────────────────────
+  // Particles
   for (const p of particles) {
-    p.x += p.vx; p.y += p.vy; p.vy += 0.22; p.vx *= 0.985; p.life -= p.decay;
+    p.x+=p.vx; p.y+=p.vy; p.vy+=0.22; p.vx*=0.985; p.life-=p.decay;
   }
   particles = particles.filter(p => p.life > 0);
+
+  // Screen shake decay
+  if (shakeT > 0) {
+    shakeT = Math.max(0, shakeT-0.06);
+    shakeX = (Math.random()-0.5)*shakeT*15;
+    shakeY = (Math.random()-0.5)*shakeT*15;
+  } else { shakeX=0; shakeY=0; }
 }
 
-// AABB collision between two cells. bStatic = b doesn't move.
+// Returns true if collision occurred.
+// bStatic=true → only 'a' moves; 'b' is static but can be woken by caller.
 function collide(a, b, rest, bStatic) {
-  const dx = b.x - a.x, dy = b.y - a.y;
-  const ox = CELL - Math.abs(dx), oy = CELL - Math.abs(dy);
-  if (ox <= 0 || oy <= 0) return;
+  // Use projected footprints (handles rotation approximately)
+  const ahw = projW(a.angle), ahh = projH(a.angle);
+  const bhw = projW(b.angle), bhh = projH(b.angle);
+  const dx = b.x-a.x, dy = b.y-a.y;
+  const ox = (ahw+bhw) - Math.abs(dx);
+  const oy = (ahh+bhh) - Math.abs(dy);
+  if (ox <= 0 || oy <= 0) return false;
 
-  const r = rest * 0.65, fr = 0.78;
+  const r=rest*0.60, fr=0.78;
   if (ox < oy) {
-    const sx = dx > 0 ? 1 : -1;
-    if (bStatic) { a.x -= sx * ox; a.vx = -a.vx * r; a.vy *= fr; }
-    else         { a.x -= sx * ox/2; b.x += sx * ox/2; const t = a.vx; a.vx = b.vx*r; b.vx = t*r; a.vy *= fr; b.vy *= fr; }
+    const sx = dx>0?1:-1;
+    if (bStatic) { a.x -= sx*ox; a.vx=-a.vx*r; a.vy*=fr; }
+    else { a.x-=sx*ox/2; b.x+=sx*ox/2; const t=a.vx; a.vx=b.vx*r; b.vx=t*r; a.vy*=fr; b.vy*=fr; }
   } else {
-    const sy = dy > 0 ? 1 : -1;
-    if (bStatic) { a.y -= sy * oy; a.vy = (sy > 0 ? -1 : 1) * Math.abs(a.vy) * r; a.vx *= fr; }
-    else         { a.y -= sy * oy/2; b.y += sy * oy/2; const t = a.vy; a.vy = b.vy*r; b.vy = t*r; a.vx *= fr; b.vx *= fr; }
+    const sy = dy>0?1:-1;
+    if (bStatic) { a.y-=sy*oy; a.vy=(sy>0?-1:1)*Math.abs(a.vy)*r; a.vx*=fr; }
+    else { a.y-=sy*oy/2; b.y+=sy*oy/2; const t=a.vy; a.vy=b.vy*r; b.vy=t*r; a.vx*=fr; b.vx*=fr; }
   }
+  return true;
 }
 
 function addShake(i) { shakeT = Math.max(shakeT, i); }
 
-function spawnClearParticles(row) {
-  const count = 5 + Math.floor(chaos * 1.5);
-  for (let col = 0; col < COLS; col++) {
-    const px = col * CELL + CELL / 2, py = row * CELL + CELL / 2;
-    const color = grid[row][col] || '#fff';
-    for (let i = 0; i < count; i++) {
-      particles.push({
-        x: px, y: py, color,
-        vx: (Math.random() - 0.5) * (9 + chaos * 2),
-        vy: (Math.random() - 1.4) * (8 + chaos * 2),
-        life: 1, decay: 0.016 + Math.random() * 0.03,
-        size: 2 + Math.random() * 4,
-      });
-    }
-  }
-}
-
-// ── rendering ───────────────────────────────────────────────────────────────
+// ── rendering ──────────────────────────────────────────────────────────────
 function drawBlock(c, x, y, size, color, alpha, angle, scale) {
   c.save();
   if (alpha != null) c.globalAlpha = alpha;
-  c.translate(x + size / 2, y + size / 2);
+  c.translate(x + size/2, y + size/2);
   if (angle) c.rotate(angle);
   if (scale != null && scale !== 1) c.scale(scale, scale);
-  c.translate(-size / 2, -size / 2);
+  c.translate(-size/2, -size/2);
   c.fillStyle = color;
-  c.fillRect(1, 1, size - 2, size - 2);
+  c.fillRect(1, 1, size-2, size-2);
   c.fillStyle = 'rgba(255,255,255,0.22)';
-  c.fillRect(1, 1, size - 2, 4);
-  c.fillRect(1, 1, 4, size - 2);
+  c.fillRect(1, 1, size-2, 4); c.fillRect(1, 1, 4, size-2);
   c.fillStyle = 'rgba(0,0,0,0.32)';
-  c.fillRect(1, size - 4, size - 2, 3);
-  c.fillRect(size - 4, 1, 3, size - 2);
+  c.fillRect(1, size-4, size-2, 3); c.fillRect(size-4, 1, 3, size-2);
   c.restore();
+}
+
+// Visualise which rows are close to clearing
+function drawCoverageHints() {
+  if (chaos < 3) return;
+  for (let row = 0; row < ROWS; row++) {
+    const y1 = row*CELL, y2 = y1+CELL;
+    const ivs = [];
+    for (const c of cells) {
+      if (c.phase !== 'rest') continue;
+      const hw=projW(c.angle), hh=projH(c.angle);
+      if (c.y+hh<=y1 || c.y-hh>=y2) continue;
+      const ov=(Math.min(c.y+hh,y2)-Math.max(c.y-hh,y1))/(hh*2);
+      if (ov<0.35) continue;
+      ivs.push([Math.max(0,c.x-hw), Math.min(W,c.x+hw)]);
+    }
+    const cov = mergedCoverage(ivs) / W;
+    if (cov > 0.4) {
+      const t = Math.min(1, (cov - 0.4) / 0.5); // 0 at 40%, 1 at 90%
+      ctx.fillStyle = `rgba(255,255,100,${t * 0.08})`;
+      ctx.fillRect(0, y1, W, CELL);
+      // Right-edge progress bar
+      ctx.fillStyle = cov >= CLEAR_FRAC
+        ? 'rgba(100,255,100,0.7)' : `rgba(255,220,50,${0.3+t*0.4})`;
+      ctx.fillRect(W-3, y1+1, 3, Math.round(CELL*cov)-2);
+    }
+  }
 }
 
 function render() {
@@ -392,72 +446,69 @@ function render() {
   ctx.translate(Math.round(shakeX), Math.round(shakeY));
 
   ctx.fillStyle = '#0d0d14';
-  ctx.fillRect(-10, -10, W + 20, H + 20);
+  ctx.fillRect(-10, -10, W+20, H+20);
 
-  // grid lines
-  ctx.strokeStyle = 'rgba(255,255,255,0.025)';
-  ctx.lineWidth = 1;
-  for (let r = 0; r <= ROWS; r++) { ctx.beginPath(); ctx.moveTo(0, r*CELL); ctx.lineTo(W, r*CELL); ctx.stroke(); }
-  for (let c = 0; c <= COLS; c++) { ctx.beginPath(); ctx.moveTo(c*CELL, 0); ctx.lineTo(c*CELL, H); ctx.stroke(); }
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.025)'; ctx.lineWidth = 1;
+  for (let r = 0; r <= ROWS; r++) { ctx.beginPath(); ctx.moveTo(0,r*CELL); ctx.lineTo(W,r*CELL); ctx.stroke(); }
+  for (let c = 0; c <= COLS; c++) { ctx.beginPath(); ctx.moveTo(c*CELL,0); ctx.lineTo(c*CELL,H); ctx.stroke(); }
 
-  // ghost
+  drawCoverageHints();
+
+  // Ghost piece (fades as chaos rises)
   if (active && chaos < 9) {
+    const ga = Math.max(0, 0.18 - chaos*0.018);
     let gr = active.r;
-    while (validPos(active.shape, gr + 1, active.c)) gr++;
-    const ga = Math.max(0, 0.2 - chaos * 0.02);
+    while (validPos(active.shape, gr+1, active.c)) gr++;
     if (gr !== active.r && ga > 0) {
+      ctx.globalAlpha = ga; ctx.strokeStyle = active.color; ctx.lineWidth = 1;
       for (let row = 0; row < active.shape.length; row++)
-        for (let col = 0; col < active.shape[row].length; col++) {
-          if (!active.shape[row][col]) continue;
-          ctx.globalAlpha = ga; ctx.strokeStyle = active.color; ctx.lineWidth = 1;
-          ctx.strokeRect((active.c+col)*CELL+1, (gr+row)*CELL+1, CELL-2, CELL-2);
-          ctx.globalAlpha = 1;
-        }
+        for (let col = 0; col < active.shape[row].length; col++)
+          if (active.shape[row][col])
+            ctx.strokeRect((active.c+col)*CELL+1, (gr+row)*CELL+1, CELL-2, CELL-2);
+      ctx.globalAlpha = 1;
     }
   }
 
-  // physics cells (note: x,y are CENTRES)
-  for (const c of cells) {
-    drawBlock(ctx, c.x - CELL/2, c.y - CELL/2, CELL, c.color, c.alpha, c.angle, c.scale);
-  }
+  // Physics cells
+  for (const c of cells)
+    drawBlock(ctx, c.x-CELL/2, c.y-CELL/2, CELL, c.color, c.alpha, c.angle, c.scale);
 
-  // active piece (grid-space, no physics)
-  if (active) {
+  // Active piece (always grid-aligned)
+  if (active)
     for (let row = 0; row < active.shape.length; row++)
-      for (let col = 0; col < active.shape[row].length; col++) {
-        if (!active.shape[row][col]) continue;
-        drawBlock(ctx, (active.c+col)*CELL, (active.r+row)*CELL, CELL, active.color);
-      }
-  }
+      for (let col = 0; col < active.shape[row].length; col++)
+        if (active.shape[row][col])
+          drawBlock(ctx, (active.c+col)*CELL, (active.r+row)*CELL, CELL, active.color);
 
-  // particles
+  // Particles
   for (const p of particles) {
-    ctx.save(); ctx.globalAlpha = p.life; ctx.fillStyle = p.color;
-    ctx.beginPath(); ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI*2); ctx.fill();
+    ctx.save(); ctx.globalAlpha=p.life; ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.size*p.life,0,Math.PI*2); ctx.fill();
     ctx.restore();
   }
 
-  // chaos vignette
+  // Chaos vignette
   if (chaos >= 7) {
     ctx.fillStyle = `rgba(180,30,0,${(chaos-7)/3*0.07})`;
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0,0,W,H);
   }
 
   ctx.restore();
 }
 
 function drawNext() {
-  nctx.fillStyle = '#111118'; nctx.fillRect(0, 0, 120, 80);
+  nctx.fillStyle='#111118'; nctx.fillRect(0,0,120,80);
   if (!nextPiece) return;
-  const s = nextPiece.shape, bs = 18;
-  const ox = (120 - s[0].length*bs)/2, oy = (80 - s.length*bs)/2;
-  for (let r = 0; r < s.length; r++)
-    for (let c = 0; c < s[r].length; c++)
-      if (s[r][c]) drawBlock(nctx, ox+c*bs, oy+r*bs, bs, nextPiece.color);
+  const s=nextPiece.shape, bs=18;
+  const ox=(120-s[0].length*bs)/2, oy=(80-s.length*bs)/2;
+  for (let r=0;r<s.length;r++)
+    for (let c=0;c<s[r].length;c++)
+      if(s[r][c]) drawBlock(nctx,ox+c*bs,oy+r*bs,bs,nextPiece.color);
 }
 
-// ── UI ───────────────────────────────────────────────────────────────────────
-const CHAOS_LABELS = ['STABLE','STABLE','STABLE','WOBBLY','WOBBLY','BOUNCY','BOUNCY','CHAOTIC','BREAKING','BREAKING','MAYHEM'];
+// ── UI ─────────────────────────────────────────────────────────────────────
+const CHAOS_LABELS = ['STABLE','STABLE','STABLE','WOBBLY','BOUNCY','BOUNCY','LIVELY','CHAOTIC','BREAKING','BREAKING','MAYHEM'];
 function updateChaosBar() {
   document.getElementById('chaosFill').style.width = (chaos*10)+'%';
   document.getElementById('chaosLabel').textContent = CHAOS_LABELS[chaos]||'MAYHEM';
@@ -467,35 +518,38 @@ function updateUI() {
   document.getElementById('levelVal').textContent = level;
   document.getElementById('linesVal').textContent = lines;
 }
-function triggerGameOver() { gameRunning = false; document.getElementById('gameOver').style.display = 'block'; }
+function endGame() { gameRunning=false; document.getElementById('gameOver').style.display='block'; }
 
-// ── input ────────────────────────────────────────────────────────────────────
+// ── input ──────────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (!gameRunning || !active) return;
   const k = e.key;
-  if      (k === 'ArrowLeft'  || k === 'a') { if (validPos(active.shape, active.r, active.c-1)) active.c--; }
-  else if (k === 'ArrowRight' || k === 'd') { if (validPos(active.shape, active.r, active.c+1)) active.c++; }
-  else if (k === 'ArrowDown'  || k === 's') { if (validPos(active.shape, active.r+1, active.c)) { active.r++; score++; } }
-  else if (k === 'ArrowUp' || k === 'w' || k === 'z' || k === 'Z') {
-    const rot = rotateCW(active.shape);
-    for (const dc of [0, -1, 1, -2, 2]) {
-      if (validPos(rot, active.r, active.c + dc)) { active.shape = rot; active.c += dc; break; }
-    }
-  } else if (k === ' ') {
-    while (validPos(active.shape, active.r+1, active.c)) { active.r++; score += 2; }
-    lockPiece(); dropTimer = 0; updateUI(); return;
+  if      (k==='ArrowLeft'  ||k==='a') { if(validPos(active.shape,active.r,active.c-1)) active.c--; }
+  else if (k==='ArrowRight' ||k==='d') { if(validPos(active.shape,active.r,active.c+1)) active.c++; }
+  else if (k==='ArrowDown'  ||k==='s') { if(validPos(active.shape,active.r+1,active.c)){active.r++;score++;} }
+  else if (k==='ArrowUp'||k==='w'||k==='z'||k==='Z') {
+    const rot=rotateCW(active.shape);
+    for (const dc of [0,-1,1,-2,2])
+      if (validPos(rot,active.r,active.c+dc)){active.shape=rot;active.c+=dc;break;}
+  } else if (k===' ') {
+    while (validPos(active.shape,active.r+1,active.c)){active.r++;score+=2;}
+    lockPiece(); dropTimer=0; updateUI(); return;
   } else return;
-  updateUI();
-  e.preventDefault();
+  updateUI(); e.preventDefault();
 });
 
-// ── game loop ────────────────────────────────────────────────────────────────
+// ── game loop ───────────────────────────────────────────────────────────────
 function gameLoop(ts) {
   if (!gameRunning) return;
-  const dt = Math.min(ts - lastTime, 50);
+  const dt = Math.min(ts-lastTime, 50);
   lastTime = ts;
-  dropTimer += dt;
 
+  rebuildPhysGrid();
+
+  // Game-over check: if active piece's spawn is blocked
+  if (!validPos(active.shape, active.r, active.c)) { endGame(); return; }
+
+  dropTimer += dt;
   if (dropTimer >= dropInterval) {
     dropTimer = 0;
     if (validPos(active.shape, active.r+1, active.c)) active.r++;
@@ -509,19 +563,19 @@ function gameLoop(ts) {
 
 function startGame() {
   initState();
-  active = newPiece(); nextPiece = newPiece();
-  gameRunning = true;
+  active=newPiece(); nextPiece=newPiece();
+  gameRunning=true;
   updateUI(); updateChaosBar(); drawNext();
-  document.getElementById('gameOver').style.display = 'none';
-  document.getElementById('startPanel').style.display = 'none';
-  lastTime = performance.now();
+  document.getElementById('gameOver').style.display='none';
+  document.getElementById('startPanel').style.display='none';
+  lastTime=performance.now();
   requestAnimationFrame(gameLoop);
 }
 
 document.getElementById('startBtn').onclick   = startGame;
 document.getElementById('restartBtn').onclick = startGame;
 
-nctx.fillStyle = '#111118'; nctx.fillRect(0, 0, 120, 80);
+nctx.fillStyle='#111118'; nctx.fillRect(0,0,120,80);
 </script>
 </body>
 </html>
