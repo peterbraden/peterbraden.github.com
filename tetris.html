@@ -5,74 +5,38 @@
 <title>Chaos Tetris</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  background: #0a0a0f;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  font-family: 'Courier New', monospace;
-  color: #eee;
-}
+body { background: #0a0a0f; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: 'Courier New', monospace; color: #ddd; }
 #wrapper { display: flex; gap: 20px; align-items: flex-start; padding: 20px; }
 #gameCanvas { border: 1px solid #2a2a3a; display: block; }
 #sidebar { width: 150px; }
-.panel {
-  background: #111118;
-  border: 1px solid #2a2a3a;
-  padding: 12px;
-  margin-bottom: 10px;
-}
-.panel h3 { font-size: 10px; color: #556; margin-bottom: 6px; letter-spacing: 2px; }
+.panel { background: #111118; border: 1px solid #2a2a3a; padding: 12px; margin-bottom: 10px; }
+.panel h3 { font-size: 10px; color: #445; margin-bottom: 6px; letter-spacing: 2px; }
 .val { font-size: 24px; color: #dde; }
-#chaosBar { width: 100%; height: 6px; background: #1a1a2a; border-radius: 3px; margin-top: 6px; overflow: hidden; }
-#chaosFill { height: 100%; border-radius: 3px; width: 0%; transition: width 0.4s; background: linear-gradient(to right, #2d2, #dd2, #d22); }
-#chaosLabel { font-size: 10px; color: #886; margin-top: 5px; letter-spacing: 1px; }
+#chaosBar { width: 100%; height: 6px; background: #1a1a2a; border-radius: 3px; margin-top: 6px; }
+#chaosFill { height: 100%; border-radius: 3px; width: 0%; background: linear-gradient(to right, #2d2, #dd2, #d22); }
+#chaosLabel { font-size: 10px; color: #886; margin-top: 4px; letter-spacing: 1px; }
 #nextCanvas { display: block; margin: 0 auto; }
-.btn {
-  width: 100%;
-  padding: 10px;
-  background: #1a3a1a;
-  color: #4e4;
-  border: 1px solid #2a5a2a;
-  cursor: pointer;
-  font-family: 'Courier New', monospace;
-  font-size: 13px;
-  letter-spacing: 2px;
-  display: block;
-}
+.btn { width: 100%; padding: 10px; background: #1a3a1a; color: #4e4; border: 1px solid #2a5a2a; cursor: pointer; font-family: 'Courier New', monospace; font-size: 13px; letter-spacing: 2px; }
 .btn:hover { background: #2a4a2a; }
 #gameOver { display: none; text-align: center; }
 #gameOver h2 { color: #f44; margin-bottom: 8px; font-size: 20px; letter-spacing: 3px; }
-#controls { font-size: 10px; color: #445; line-height: 1.8; }
-#controls span { color: #667; }
+#controls { font-size: 10px; color: #334; line-height: 1.9; }
+#controls span { color: #557; }
 </style>
 </head>
 <body>
 <div id="wrapper">
   <canvas id="gameCanvas" width="300" height="600"></canvas>
   <div id="sidebar">
-    <div class="panel">
-      <h3>SCORE</h3>
-      <div class="val" id="scoreVal">0</div>
-    </div>
-    <div class="panel">
-      <h3>LEVEL</h3>
-      <div class="val" id="levelVal">1</div>
-    </div>
-    <div class="panel">
-      <h3>LINES</h3>
-      <div class="val" id="linesVal">0</div>
-    </div>
+    <div class="panel"><h3>SCORE</h3><div class="val" id="scoreVal">0</div></div>
+    <div class="panel"><h3>LEVEL</h3><div class="val" id="levelVal">1</div></div>
+    <div class="panel"><h3>LINES</h3><div class="val" id="linesVal">0</div></div>
     <div class="panel">
       <h3>CHAOS ENGINE</h3>
       <div id="chaosBar"><div id="chaosFill"></div></div>
       <div id="chaosLabel">STABLE</div>
     </div>
-    <div class="panel">
-      <h3>NEXT</h3>
-      <canvas id="nextCanvas" width="120" height="80"></canvas>
-    </div>
+    <div class="panel"><h3>NEXT</h3><canvas id="nextCanvas" width="120" height="80"></canvas></div>
     <div class="panel" id="gameOver">
       <h2>GAME<br>OVER</h2>
       <button class="btn" id="restartBtn">RESTART</button>
@@ -90,115 +54,79 @@ body {
 </div>
 <script>
 const COLS = 10, ROWS = 20, CELL = 30;
+const W = COLS * CELL, H = ROWS * CELL;
+
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const nextCanvas = document.getElementById('nextCanvas');
 const nctx = nextCanvas.getContext('2d');
 
 const PIECES = [
-  { shape: [[1,1,1,1]],           color: '#0ef' },
-  { shape: [[1,1],[1,1]],         color: '#fe0' },
-  { shape: [[0,1,0],[1,1,1]],     color: '#b0f' },
-  { shape: [[1,0],[1,0],[1,1]],   color: '#f80' },
-  { shape: [[0,1],[0,1],[1,1]],   color: '#36f' },
-  { shape: [[0,1,1],[1,1,0]],     color: '#0d0' },
-  { shape: [[1,1,0],[0,1,1]],     color: '#f22' },
+  { shape: [[1,1,1,1]],         color: '#0ef' },
+  { shape: [[1,1],[1,1]],       color: '#fe0' },
+  { shape: [[0,1,0],[1,1,1]],   color: '#b0f' },
+  { shape: [[1,0],[1,0],[1,1]], color: '#f80' },
+  { shape: [[0,1],[0,1],[1,1]], color: '#36f' },
+  { shape: [[0,1,1],[1,1,0]],   color: '#0d0' },
+  { shape: [[1,1,0],[0,1,1]],   color: '#f22' },
 ];
 
-let grid, physBlocks, particles, activePiece, nextPiece;
+// ── state ──────────────────────────────────────────────────────────────────
+let grid;        // grid[r][c] = color | null  — game logic only
+let cells;       // PhysCell[] — visual layer
+let particles;
+let active, nextPiece;
 let score, level, lines, chaos;
 let gameRunning, dropTimer, dropInterval, lastTime;
-let screenShake;
+let shakeT = 0, shakeX = 0, shakeY = 0;
 
 function initState() {
   grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
-  physBlocks = [];
+  cells = [];
   particles = [];
   score = 0; level = 1; lines = 0; chaos = 0;
   dropTimer = 0; dropInterval = 800;
-  screenShake = { x: 0, y: 0, t: 0 };
+  shakeT = 0; shakeX = 0; shakeY = 0;
 }
 
-// --- Grid helpers ---
-function gridSet(r, c, v) {
-  if (r >= 0 && r < ROWS && c >= 0 && c < COLS) grid[r][c] = v;
+// ── chaos parameters ────────────────────────────────────────────────────────
+function cp() {
+  const f = chaos / 10;                         // 0..1
+  return {
+    flyMs:       200 + f * 5800,                // ms of real physics before homing
+    gravity:     0.07 + f * 0.53,               // px / frame²
+    restitution: 0.15 + f * 0.60,               // bounciness
+    friction:    0.88 - f * 0.08,               // floor/wall friction
+    impulse:     f,                              // impulse scale
+    homeLerp:    0.14 - f * 0.08,               // lerp speed back to grid (0.06..0.14)
+    breakApart:  chaos >= 7,                     // cells scatter on landing
+  };
 }
 
-// --- PhysBlocks: visual layer for landed cells ---
-function addPhysBlock(r, c, color) {
-  physBlocks = physBlocks.filter(b => !(b.gr === r && b.gc === c));
-  physBlocks.push({ gr: r, gc: c, color, dx: 0, dy: 0, angle: 0, vx: 0, vy: 0, va: 0, alpha: 1, scale: 1, dying: false, dyingTimer: 0 });
+// ── PhysCell factory ────────────────────────────────────────────────────────
+// phase: 'fly' | 'home' | 'rest' | 'die'
+function makeCell(gr, gc, color) {
+  return {
+    gr, gc, color,
+    x: gc * CELL + CELL / 2,
+    y: gr * CELL + CELL / 2,
+    vx: 0, vy: 0,
+    angle: 0, av: 0,
+    phase: 'fly',
+    flyMs: 0,           // accumulated ms in fly phase
+    alpha: 1, scale: 1,
+  };
 }
 
-function getPhysBlock(r, c) {
-  return physBlocks.find(b => b.gr === r && b.gc === c && !b.dying);
-}
-
-// Apply landing impulse based on chaos
-function landingImpact(blocks, hardness) {
-  if (chaos < 3 || blocks.length === 0) return;
-
-  const cx = blocks.reduce((s, b) => s + b.gc, 0) / blocks.length;
-  const cy = blocks.reduce((s, b) => s + b.gr, 0) / blocks.length;
-  const f = Math.min(1, (chaos - 2) / 7); // 0..1 over chaos 3..10
-
-  for (const b of blocks) {
-    if (chaos >= 3) {
-      b.vx = (Math.random() - 0.5) * 5 * f * hardness;
-      b.vy = -Math.random() * 4 * f * hardness;
-      b.va = (Math.random() - 0.5) * 0.4 * f * hardness;
-    }
-    if (chaos >= 6) {
-      const ax = b.gc - cx, ay = b.gr - cy;
-      const d = Math.sqrt(ax*ax + ay*ay) || 1;
-      b.vx += (ax/d) * 6 * f * hardness;
-      b.vy += (ay/d) * 4 * f * hardness;
-      b.va += (Math.random() - 0.5) * 0.8 * f * hardness;
-    }
-    if (chaos >= 8) {
-      b.vx = (Math.random() - 0.5) * 14 * f * hardness;
-      b.vy = -Math.random() * 10 * f * hardness;
-      b.va = (Math.random() - 0.5) * 1.8 * f * hardness;
-    }
-  }
-
-  if (chaos >= 7) {
-    screenShake.t = Math.max(screenShake.t, f * hardness * 6);
-  }
-}
-
-function spawnClearParticles(row) {
-  const count = 4 + Math.floor(chaos * 1.5);
-  for (let c = 0; c < COLS; c++) {
-    const x = c * CELL + CELL / 2, y = row * CELL + CELL / 2;
-    const color = grid[row][c] || '#fff';
-    for (let i = 0; i < count; i++) {
-      particles.push({
-        x, y, color,
-        vx: (Math.random() - 0.5) * (8 + chaos * 2),
-        vy: (Math.random() - 1.3) * (7 + chaos * 2),
-        life: 1,
-        decay: 0.018 + Math.random() * 0.035,
-        size: 2 + Math.random() * 3,
-      });
-    }
-  }
-}
-
-// --- Piece logic ---
+// ── tetromino helpers ───────────────────────────────────────────────────────
 function newPiece() {
-  const def = PIECES[Math.floor(Math.random() * PIECES.length)];
-  const shape = def.shape.map(r => [...r]);
-  return { shape, color: def.color, r: 0, c: Math.floor((COLS - shape[0].length) / 2) };
+  const d = PIECES[Math.floor(Math.random() * PIECES.length)];
+  return { shape: d.shape.map(r => [...r]), color: d.color,
+           r: 0, c: Math.floor((COLS - d.shape[0].length) / 2) };
 }
 
-function rotateCW(shape) {
-  const rows = shape.length, cols = shape[0].length;
-  const out = Array.from({ length: cols }, () => Array(rows).fill(0));
-  for (let r = 0; r < rows; r++)
-    for (let c = 0; c < cols; c++)
-      out[c][rows - 1 - r] = shape[r][c];
-  return out;
+function rotateCW(s) {
+  return s[0].map((_, c) => s.map(r => r[c]).reverse());
 }
 
 function validPos(shape, r, c) {
@@ -212,292 +140,356 @@ function validPos(shape, r, c) {
   return true;
 }
 
+// ── locking ─────────────────────────────────────────────────────────────────
 function lockPiece() {
-  const { shape, color, r, c } = activePiece;
-  const locked = [];
+  const { shape, color, r, c } = active;
+  const p = cp();
 
+  // Collect cells of this piece
+  const pieceCells = [];
   for (let row = 0; row < shape.length; row++)
     for (let col = 0; col < shape[row].length; col++) {
       if (!shape[row][col]) continue;
       const gr = r + row, gc = c + col;
       if (gr < 0) { triggerGameOver(); return; }
-      gridSet(gr, gc, color);
-      addPhysBlock(gr, gc, color);
-      const pb = getPhysBlock(gr, gc);
-      if (pb) locked.push(pb);
+      pieceCells.push({ gr, gc });
     }
 
-  landingImpact(locked, 0.5 + Math.random() * 0.7);
+  // Update logic grid immediately
+  for (const { gr, gc } of pieceCells) grid[gr][gc] = color;
+
+  // Centre of mass of this piece
+  const cxF = pieceCells.reduce((s, b) => s + b.gc, 0) / pieceCells.length;
+  const cyF = pieceCells.reduce((s, b) => s + b.gr, 0) / pieceCells.length;
+
+  // Create/replace physics cells
+  for (const { gr, gc } of pieceCells) {
+    cells = cells.filter(c => !(c.gr === gr && c.gc === gc && c.phase !== 'die'));
+    const cell = makeCell(gr, gc, color);
+    cell.flyMs = 0;
+
+    if (p.impulse > 0) {
+      const ax = gc - cxF, ay = gr - cyF;
+      const d = Math.sqrt(ax * ax + ay * ay) || 1;
+      if (p.breakApart) {
+        // each cell scatters independently
+        cell.vx = ax / d * 7 * p.impulse + (Math.random() - 0.5) * 9 * p.impulse;
+        cell.vy = -(Math.random() * 8 + 2) * p.impulse;
+        cell.av = (Math.random() - 0.5) * 0.3 * p.impulse;
+      } else {
+        cell.vx = (Math.random() - 0.5) * 7 * p.impulse;
+        cell.vy = -(Math.random() * 5 + 1) * p.impulse;
+        cell.av = (Math.random() - 0.5) * 0.15 * p.impulse;
+      }
+    }
+    cells.push(cell);
+  }
+
+  if (chaos >= 7) addShake(0.5 + (chaos - 7) * 0.25);
+
   clearLines();
 
-  activePiece = nextPiece;
+  active = nextPiece;
   nextPiece = newPiece();
-
-  if (!validPos(activePiece.shape, activePiece.r, activePiece.c)) {
-    triggerGameOver();
-    return;
-  }
-  updateUI();
-  drawNext();
+  if (!validPos(active.shape, active.r, active.c)) { triggerGameOver(); return; }
+  updateUI(); drawNext();
 }
 
 function clearLines() {
   let cleared = 0;
   for (let row = ROWS - 1; row >= 0; row--) {
-    if (grid[row].every(c => c !== null)) {
-      spawnClearParticles(row);
+    if (!grid[row].every(v => v !== null)) continue;
 
-      // Flag phys blocks on this row as dying
-      for (let col = 0; col < COLS; col++) {
-        const pb = getPhysBlock(row, col);
-        if (pb) {
-          pb.dying = true;
-          pb.dyingTimer = 1;
-          pb.vx = (Math.random() - 0.5) * 18;
-          pb.vy = -3 - Math.random() * 8;
-          pb.va = (Math.random() - 0.5) * 2.5;
-        }
+    spawnClearParticles(row);
+
+    // kill phys cells on this row
+    for (const c of cells) {
+      if (c.gr === row && c.phase !== 'die') {
+        c.phase = 'die';
+        c.alpha = 1; c.scale = 1;
+        c.vx = (Math.random() - 0.5) * 18;
+        c.vy = -4 - Math.random() * 9;
+        c.av = (Math.random() - 0.5) * 2.5;
       }
-
-      grid.splice(row, 1);
-      grid.unshift(Array(COLS).fill(null));
-
-      // Shift live physblocks above cleared row down one
-      for (const b of physBlocks) {
-        if (!b.dying && b.gr <= row) {
-          b.gr++;
-          const f = Math.max(0, (chaos - 3) / 7);
-          b.vy += f * (1 + Math.random() * 3);
-          b.va += (Math.random() - 0.5) * f * 0.5;
-        }
-      }
-
-      cleared++;
-      row++; // recheck this index since grid shifted
     }
+
+    // update logic grid
+    grid.splice(row, 1);
+    grid.unshift(Array(COLS).fill(null));
+
+    // shift phys cells above this row down; wake settled ones
+    const f = Math.max(0, (chaos - 3) / 7);
+    for (const c of cells) {
+      if (c.phase === 'die' || c.gr >= row) continue;
+      c.gr++;
+      if (f > 0) {
+        if (c.phase === 'rest') {
+          c.phase = 'fly'; c.flyMs = 0;
+          c.vy = 2 + Math.random() * 4 * f;
+          c.vx = (Math.random() - 0.5) * 3 * f;
+          c.av = (Math.random() - 0.5) * 0.1 * f;
+        } else {
+          c.vy += 1.5 + Math.random() * 2 * f;
+        }
+      }
+    }
+
+    cleared++;
+    row++; // recheck after splice
   }
 
   if (cleared > 0) {
-    const pts = [0, 100, 300, 500, 800][Math.min(cleared, 4)] * level;
-    score += pts;
+    score += [0, 100, 300, 500, 800][Math.min(cleared, 4)] * level;
     lines += cleared;
-    level = Math.floor(lines / 10) + 1;
-    chaos = Math.min(10, Math.floor(lines / 4));
+    level  = Math.floor(lines / 10) + 1;
+    chaos  = Math.min(10, Math.floor(lines / 4));
     dropInterval = Math.max(80, 800 - (level - 1) * 65);
+    if (chaos >= 8) addShake(0.7);
     updateChaosBar();
   }
 }
 
-// --- Physics update ---
+// ── physics update ──────────────────────────────────────────────────────────
 function updatePhysics(dt) {
-  const spring = 0.08 + chaos * 0.004;
-  const damp   = Math.max(0.78, 0.94 - chaos * 0.008);
-  const adamp  = Math.max(0.80, 0.95 - chaos * 0.008);
-  const maxOff = 2 + chaos * 3.5;
-  const maxAng = chaos * 0.12;
+  const p = cp();
 
-  for (const b of physBlocks) {
-    if (b.dying) {
-      b.vx *= 0.97; b.vy += 0.45; b.dx += b.vx; b.dy += b.vy;
-      b.va *= 0.97; b.angle += b.va;
-      b.dyingTimer -= 0.025;
-      b.alpha = Math.max(0, b.dyingTimer);
-      b.scale = 0.4 + b.dyingTimer * 0.6;
-      continue;
+  // ── flying cells: real gravity + bounce ───────────────────────────────────
+  const flying = cells.filter(c => c.phase === 'fly');
+  for (const c of flying) {
+    c.flyMs += dt;
+    if (c.flyMs >= p.flyMs) { c.phase = 'home'; continue; }
+
+    c.vy += p.gravity;
+    c.x  += c.vx;
+    c.y  += c.vy;
+    c.angle += c.av;
+    c.av *= 0.97;
+
+    // floor
+    if (c.y + CELL / 2 > H) {
+      c.y = H - CELL / 2;
+      if (Math.abs(c.vy) > 0.6) {
+        c.vy = -Math.abs(c.vy) * p.restitution;
+        c.vx *= p.friction;
+        c.av += c.vx * 0.025;
+      } else { c.vy = 0; c.vx *= 0.80; }
     }
-
-    // Spring toward grid origin
-    b.vx += -b.dx * spring; b.vy += -b.dy * spring;
-    b.va += -b.angle * 0.12;
-    b.vx *= damp; b.vy *= damp; b.va *= adamp;
-    b.dx += b.vx; b.dy += b.vy; b.angle += b.va;
-
-    b.dx = Math.max(-maxOff, Math.min(maxOff, b.dx));
-    b.dy = Math.max(-maxOff, Math.min(maxOff, b.dy));
-    b.angle = Math.max(-maxAng, Math.min(maxAng, b.angle));
-
-    // Bounce off walls
-    const sx = b.gc * CELL + b.dx;
-    const sy = b.gr * CELL + b.dy;
-    if (sx < 0)               { b.dx = 0; b.vx =  Math.abs(b.vx) * 0.5; }
-    if (sx + CELL > COLS*CELL){ b.dx = 0; b.vx = -Math.abs(b.vx) * 0.5; }
-    if (sy + CELL > ROWS*CELL){ b.dy = 0; b.vy = -Math.abs(b.vy) * 0.35; }
+    // walls
+    if (c.x - CELL / 2 < 0)  { c.x = CELL / 2;     c.vx =  Math.abs(c.vx) * p.restitution; c.av = -c.av * 0.5; }
+    if (c.x + CELL / 2 > W)  { c.x = W - CELL / 2; c.vx = -Math.abs(c.vx) * p.restitution; c.av = -c.av * 0.5; }
+    // ceiling
+    if (c.y - CELL / 2 < 0)  { c.y = CELL / 2; if (c.vy < 0) c.vy = Math.abs(c.vy) * 0.2; }
   }
 
-  physBlocks = physBlocks.filter(b => !b.dying || b.dyingTimer > 0);
+  // ── cell-cell collision: flying vs flying + flying vs settled ─────────────
+  const resting = cells.filter(c => c.phase === 'rest');
+  for (let i = 0; i < flying.length; i++) {
+    for (let j = i + 1; j < flying.length; j++) {
+      collide(flying[i], flying[j], p.restitution, false);
+    }
+    for (const s of resting) {
+      collide(flying[i], s, p.restitution, true);   // settled = static
+    }
+  }
 
-  // Particles
+  // ── homing: lerp back to canonical grid position ──────────────────────────
+  for (const c of cells) {
+    if (c.phase !== 'home') continue;
+    const tx = c.gc * CELL + CELL / 2;
+    const ty = c.gr * CELL + CELL / 2;
+    c.x += (tx - c.x) * p.homeLerp;
+    c.y += (ty - c.y) * p.homeLerp;
+    c.angle *= 0.88;
+    if (Math.abs(tx - c.x) < 0.5 && Math.abs(ty - c.y) < 0.5) {
+      c.x = tx; c.y = ty; c.angle = 0;
+      c.phase = 'rest';
+    }
+  }
+
+  // ── dying ─────────────────────────────────────────────────────────────────
+  for (const c of cells) {
+    if (c.phase !== 'die') continue;
+    c.vy += 0.5;
+    c.x  += c.vx;  c.y += c.vy;
+    c.angle += c.av; c.av *= 0.97; c.vx *= 0.97;
+    c.alpha  -= 0.022;
+    c.scale   = 0.3 + c.alpha * 0.7;
+  }
+  cells = cells.filter(c => c.phase !== 'die' || c.alpha > 0);
+
+  // ── screen shake ──────────────────────────────────────────────────────────
+  if (shakeT > 0) {
+    shakeT = Math.max(0, shakeT - 0.06);
+    shakeX = (Math.random() - 0.5) * shakeT * 15;
+    shakeY = (Math.random() - 0.5) * shakeT * 15;
+  } else { shakeX = 0; shakeY = 0; }
+
+  // ── particles ─────────────────────────────────────────────────────────────
   for (const p of particles) {
-    p.x += p.vx; p.y += p.vy; p.vy += 0.25; p.vx *= 0.985;
-    p.life -= p.decay;
+    p.x += p.vx; p.y += p.vy; p.vy += 0.22; p.vx *= 0.985; p.life -= p.decay;
   }
   particles = particles.filter(p => p.life > 0);
+}
 
-  // Screen shake decay
-  if (screenShake.t > 0) {
-    screenShake.t = Math.max(0, screenShake.t - 0.08);
-    screenShake.x = (Math.random() - 0.5) * screenShake.t * 12;
-    screenShake.y = (Math.random() - 0.5) * screenShake.t * 12;
+// AABB collision between two cells. bStatic = b doesn't move.
+function collide(a, b, rest, bStatic) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const ox = CELL - Math.abs(dx), oy = CELL - Math.abs(dy);
+  if (ox <= 0 || oy <= 0) return;
+
+  const r = rest * 0.65, fr = 0.78;
+  if (ox < oy) {
+    const sx = dx > 0 ? 1 : -1;
+    if (bStatic) { a.x -= sx * ox; a.vx = -a.vx * r; a.vy *= fr; }
+    else         { a.x -= sx * ox/2; b.x += sx * ox/2; const t = a.vx; a.vx = b.vx*r; b.vx = t*r; a.vy *= fr; b.vy *= fr; }
   } else {
-    screenShake.x = 0; screenShake.y = 0;
+    const sy = dy > 0 ? 1 : -1;
+    if (bStatic) { a.y -= sy * oy; a.vy = (sy > 0 ? -1 : 1) * Math.abs(a.vy) * r; a.vx *= fr; }
+    else         { a.y -= sy * oy/2; b.y += sy * oy/2; const t = a.vy; a.vy = b.vy*r; b.vy = t*r; a.vx *= fr; b.vx *= fr; }
   }
 }
 
-// --- Rendering ---
-function drawBlock(c, x, y, size, color, alpha, angle) {
+function addShake(i) { shakeT = Math.max(shakeT, i); }
+
+function spawnClearParticles(row) {
+  const count = 5 + Math.floor(chaos * 1.5);
+  for (let col = 0; col < COLS; col++) {
+    const px = col * CELL + CELL / 2, py = row * CELL + CELL / 2;
+    const color = grid[row][col] || '#fff';
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x: px, y: py, color,
+        vx: (Math.random() - 0.5) * (9 + chaos * 2),
+        vy: (Math.random() - 1.4) * (8 + chaos * 2),
+        life: 1, decay: 0.016 + Math.random() * 0.03,
+        size: 2 + Math.random() * 4,
+      });
+    }
+  }
+}
+
+// ── rendering ───────────────────────────────────────────────────────────────
+function drawBlock(c, x, y, size, color, alpha, angle, scale) {
   c.save();
-  if (alpha !== undefined) c.globalAlpha = alpha;
+  if (alpha != null) c.globalAlpha = alpha;
   c.translate(x + size / 2, y + size / 2);
   if (angle) c.rotate(angle);
+  if (scale != null && scale !== 1) c.scale(scale, scale);
   c.translate(-size / 2, -size / 2);
-
   c.fillStyle = color;
   c.fillRect(1, 1, size - 2, size - 2);
-
   c.fillStyle = 'rgba(255,255,255,0.22)';
   c.fillRect(1, 1, size - 2, 4);
   c.fillRect(1, 1, 4, size - 2);
-
-  c.fillStyle = 'rgba(0,0,0,0.35)';
+  c.fillStyle = 'rgba(0,0,0,0.32)';
   c.fillRect(1, size - 4, size - 2, 3);
   c.fillRect(size - 4, 1, 3, size - 2);
-
   c.restore();
 }
 
 function render() {
   ctx.save();
-  ctx.translate(Math.round(screenShake.x), Math.round(screenShake.y));
+  ctx.translate(Math.round(shakeX), Math.round(shakeY));
 
-  // Background
   ctx.fillStyle = '#0d0d14';
-  ctx.fillRect(-10, -10, canvas.width + 20, canvas.height + 20);
+  ctx.fillRect(-10, -10, W + 20, H + 20);
 
-  // Subtle grid
+  // grid lines
   ctx.strokeStyle = 'rgba(255,255,255,0.025)';
   ctx.lineWidth = 1;
-  for (let r = 0; r <= ROWS; r++) {
-    ctx.beginPath(); ctx.moveTo(0, r * CELL); ctx.lineTo(COLS * CELL, r * CELL); ctx.stroke();
-  }
-  for (let c = 0; c <= COLS; c++) {
-    ctx.beginPath(); ctx.moveTo(c * CELL, 0); ctx.lineTo(c * CELL, ROWS * CELL); ctx.stroke();
-  }
+  for (let r = 0; r <= ROWS; r++) { ctx.beginPath(); ctx.moveTo(0, r*CELL); ctx.lineTo(W, r*CELL); ctx.stroke(); }
+  for (let c = 0; c <= COLS; c++) { ctx.beginPath(); ctx.moveTo(c*CELL, 0); ctx.lineTo(c*CELL, H); ctx.stroke(); }
 
-  // Ghost piece (fades at high chaos)
-  if (activePiece && chaos < 9) {
-    const ghostAlpha = Math.max(0, 0.22 - chaos * 0.02);
-    let gr = activePiece.r;
-    while (validPos(activePiece.shape, gr + 1, activePiece.c)) gr++;
-    if (gr !== activePiece.r) {
-      for (let row = 0; row < activePiece.shape.length; row++)
-        for (let col = 0; col < activePiece.shape[row].length; col++) {
-          if (!activePiece.shape[row][col]) continue;
-          ctx.globalAlpha = ghostAlpha;
-          ctx.strokeStyle = activePiece.color;
-          ctx.lineWidth = 1;
-          ctx.strokeRect((activePiece.c + col) * CELL + 1, (gr + row) * CELL + 1, CELL - 2, CELL - 2);
+  // ghost
+  if (active && chaos < 9) {
+    let gr = active.r;
+    while (validPos(active.shape, gr + 1, active.c)) gr++;
+    const ga = Math.max(0, 0.2 - chaos * 0.02);
+    if (gr !== active.r && ga > 0) {
+      for (let row = 0; row < active.shape.length; row++)
+        for (let col = 0; col < active.shape[row].length; col++) {
+          if (!active.shape[row][col]) continue;
+          ctx.globalAlpha = ga; ctx.strokeStyle = active.color; ctx.lineWidth = 1;
+          ctx.strokeRect((active.c+col)*CELL+1, (gr+row)*CELL+1, CELL-2, CELL-2);
           ctx.globalAlpha = 1;
         }
     }
   }
 
-  // Landed physblocks
-  for (const b of physBlocks) {
-    drawBlock(ctx, b.gc * CELL + b.dx, b.gr * CELL + b.dy, CELL * b.scale, b.color, b.alpha, b.angle);
+  // physics cells (note: x,y are CENTRES)
+  for (const c of cells) {
+    drawBlock(ctx, c.x - CELL/2, c.y - CELL/2, CELL, c.color, c.alpha, c.angle, c.scale);
   }
 
-  // Active piece
-  if (activePiece) {
-    for (let row = 0; row < activePiece.shape.length; row++)
-      for (let col = 0; col < activePiece.shape[row].length; col++) {
-        if (!activePiece.shape[row][col]) continue;
-        drawBlock(ctx, (activePiece.c + col) * CELL, (activePiece.r + row) * CELL, CELL, activePiece.color);
+  // active piece (grid-space, no physics)
+  if (active) {
+    for (let row = 0; row < active.shape.length; row++)
+      for (let col = 0; col < active.shape[row].length; col++) {
+        if (!active.shape[row][col]) continue;
+        drawBlock(ctx, (active.c+col)*CELL, (active.r+row)*CELL, CELL, active.color);
       }
   }
 
-  // Particles
+  // particles
   for (const p of particles) {
-    ctx.save();
-    ctx.globalAlpha = p.life;
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.save(); ctx.globalAlpha = p.life; ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI*2); ctx.fill();
     ctx.restore();
   }
 
-  // High-chaos red vignette tint
+  // chaos vignette
   if (chaos >= 7) {
-    const intensity = (chaos - 7) / 3 * 0.06;
-    ctx.fillStyle = `rgba(200, 30, 0, ${intensity})`;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = `rgba(180,30,0,${(chaos-7)/3*0.07})`;
+    ctx.fillRect(0, 0, W, H);
   }
 
   ctx.restore();
 }
 
 function drawNext() {
-  nctx.fillStyle = '#111118';
-  nctx.fillRect(0, 0, 120, 80);
+  nctx.fillStyle = '#111118'; nctx.fillRect(0, 0, 120, 80);
   if (!nextPiece) return;
-  const s = nextPiece.shape;
-  const bs = 18;
-  const ox = (120 - s[0].length * bs) / 2;
-  const oy = (80 - s.length * bs) / 2;
+  const s = nextPiece.shape, bs = 18;
+  const ox = (120 - s[0].length*bs)/2, oy = (80 - s.length*bs)/2;
   for (let r = 0; r < s.length; r++)
     for (let c = 0; c < s[r].length; c++)
-      if (s[r][c]) drawBlock(nctx, ox + c * bs, oy + r * bs, bs, nextPiece.color);
+      if (s[r][c]) drawBlock(nctx, ox+c*bs, oy+r*bs, bs, nextPiece.color);
 }
 
-// --- UI updates ---
-const CHAOS_LABELS = ['STABLE','STABLE','STABLE','WOBBLY','WOBBLY','BOUNCY','BOUNCY','CHAOTIC','CHAOTIC','BREAKING','BREAKING'];
-
+// ── UI ───────────────────────────────────────────────────────────────────────
+const CHAOS_LABELS = ['STABLE','STABLE','STABLE','WOBBLY','WOBBLY','BOUNCY','BOUNCY','CHAOTIC','BREAKING','BREAKING','MAYHEM'];
 function updateChaosBar() {
-  document.getElementById('chaosFill').style.width = (chaos * 10) + '%';
-  document.getElementById('chaosLabel').textContent = CHAOS_LABELS[chaos] || 'BREAKING';
+  document.getElementById('chaosFill').style.width = (chaos*10)+'%';
+  document.getElementById('chaosLabel').textContent = CHAOS_LABELS[chaos]||'MAYHEM';
 }
-
 function updateUI() {
   document.getElementById('scoreVal').textContent = score;
   document.getElementById('levelVal').textContent = level;
   document.getElementById('linesVal').textContent = lines;
 }
+function triggerGameOver() { gameRunning = false; document.getElementById('gameOver').style.display = 'block'; }
 
-// --- Input ---
-const keys = {};
+// ── input ────────────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
-  if (!gameRunning || !activePiece) return;
+  if (!gameRunning || !active) return;
   const k = e.key;
-
-  if (k === 'ArrowLeft' || k === 'a') {
-    if (validPos(activePiece.shape, activePiece.r, activePiece.c - 1)) activePiece.c--;
-  } else if (k === 'ArrowRight' || k === 'd') {
-    if (validPos(activePiece.shape, activePiece.r, activePiece.c + 1)) activePiece.c++;
-  } else if (k === 'ArrowDown' || k === 's') {
-    if (validPos(activePiece.shape, activePiece.r + 1, activePiece.c)) { activePiece.r++; score++; }
-  } else if (k === 'ArrowUp' || k === 'w' || k === 'z' || k === 'Z') {
-    // Rotate with wall kick
-    const rot = rotateCW(activePiece.shape);
-    if      (validPos(rot, activePiece.r, activePiece.c))     activePiece.shape = rot;
-    else if (validPos(rot, activePiece.r, activePiece.c - 1)) { activePiece.shape = rot; activePiece.c--; }
-    else if (validPos(rot, activePiece.r, activePiece.c + 1)) { activePiece.shape = rot; activePiece.c++; }
-    else if (validPos(rot, activePiece.r, activePiece.c - 2)) { activePiece.shape = rot; activePiece.c -= 2; }
-    else if (validPos(rot, activePiece.r, activePiece.c + 2)) { activePiece.shape = rot; activePiece.c += 2; }
+  if      (k === 'ArrowLeft'  || k === 'a') { if (validPos(active.shape, active.r, active.c-1)) active.c--; }
+  else if (k === 'ArrowRight' || k === 'd') { if (validPos(active.shape, active.r, active.c+1)) active.c++; }
+  else if (k === 'ArrowDown'  || k === 's') { if (validPos(active.shape, active.r+1, active.c)) { active.r++; score++; } }
+  else if (k === 'ArrowUp' || k === 'w' || k === 'z' || k === 'Z') {
+    const rot = rotateCW(active.shape);
+    for (const dc of [0, -1, 1, -2, 2]) {
+      if (validPos(rot, active.r, active.c + dc)) { active.shape = rot; active.c += dc; break; }
+    }
   } else if (k === ' ') {
-    while (validPos(activePiece.shape, activePiece.r + 1, activePiece.c)) { activePiece.r++; score += 2; }
-    lockPiece();
-    dropTimer = 0;
-    updateUI();
-    return;
-  } else {
-    return;
-  }
-
+    while (validPos(active.shape, active.r+1, active.c)) { active.r++; score += 2; }
+    lockPiece(); dropTimer = 0; updateUI(); return;
+  } else return;
   updateUI();
   e.preventDefault();
 });
 
-// --- Game loop ---
+// ── game loop ────────────────────────────────────────────────────────────────
 function gameLoop(ts) {
   if (!gameRunning) return;
   const dt = Math.min(ts - lastTime, 50);
@@ -506,11 +498,8 @@ function gameLoop(ts) {
 
   if (dropTimer >= dropInterval) {
     dropTimer = 0;
-    if (validPos(activePiece.shape, activePiece.r + 1, activePiece.c)) {
-      activePiece.r++;
-    } else {
-      lockPiece();
-    }
+    if (validPos(active.shape, active.r+1, active.c)) active.r++;
+    else lockPiece();
   }
 
   updatePhysics(dt);
@@ -520,32 +509,19 @@ function gameLoop(ts) {
 
 function startGame() {
   initState();
-  activePiece = newPiece();
-  nextPiece = newPiece();
+  active = newPiece(); nextPiece = newPiece();
   gameRunning = true;
-
-  updateUI();
-  updateChaosBar();
-  drawNext();
-
+  updateUI(); updateChaosBar(); drawNext();
   document.getElementById('gameOver').style.display = 'none';
   document.getElementById('startPanel').style.display = 'none';
-
   lastTime = performance.now();
   requestAnimationFrame(gameLoop);
 }
 
-function triggerGameOver() {
-  gameRunning = false;
-  document.getElementById('gameOver').style.display = 'block';
-}
-
-document.getElementById('startBtn').onclick = startGame;
+document.getElementById('startBtn').onclick   = startGame;
 document.getElementById('restartBtn').onclick = startGame;
 
-// Initial next-canvas fill
-nctx.fillStyle = '#111118';
-nctx.fillRect(0, 0, 120, 80);
+nctx.fillStyle = '#111118'; nctx.fillRect(0, 0, 120, 80);
 </script>
 </body>
 </html>
