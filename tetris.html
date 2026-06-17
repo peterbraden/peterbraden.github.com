@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chaos Tetris</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0a0a0f; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: 'Courier New', monospace; color: #ddd; }
+#wrapper { display: flex; gap: 20px; align-items: flex-start; padding: 20px; }
+#gameCanvas { border: 1px solid #2a2a3a; display: block; }
+#sidebar { width: 150px; }
+.panel { background: #111118; border: 1px solid #2a2a3a; padding: 12px; margin-bottom: 10px; }
+.panel h3 { font-size: 10px; color: #445; margin-bottom: 6px; letter-spacing: 2px; }
+.val { font-size: 24px; color: #dde; }
+#chaosBar { width: 100%; height: 6px; background: #1a1a2a; border-radius: 3px; margin-top: 6px; }
+#chaosFill { height: 100%; border-radius: 3px; width: 0%; background: linear-gradient(to right, #2d2, #dd2, #d22); }
+#chaosLabel { font-size: 10px; color: #886; margin-top: 4px; letter-spacing: 1px; }
+#nextCanvas { display: block; margin: 0 auto; }
+.btn { width: 100%; padding: 10px; background: #1a3a1a; color: #4e4; border: 1px solid #2a5a2a; cursor: pointer; font-family: 'Courier New', monospace; font-size: 13px; letter-spacing: 2px; }
+.btn:hover { background: #2a4a2a; }
+#gameOver { display: none; text-align: center; }
+#gameOver h2 { color: #f44; margin-bottom: 8px; font-size: 20px; letter-spacing: 3px; }
+#controls { font-size: 10px; color: #334; line-height: 1.9; }
+#controls span { color: #557; }
+</style>
+</head>
+<body>
+<div id="wrapper">
+  <canvas id="gameCanvas" width="300" height="600"></canvas>
+  <div id="sidebar">
+    <div class="panel"><h3>SCORE</h3><div class="val" id="scoreVal">0</div></div>
+    <div class="panel"><h3>LEVEL</h3><div class="val" id="levelVal">1</div></div>
+    <div class="panel"><h3>LINES</h3><div class="val" id="linesVal">0</div></div>
+    <div class="panel">
+      <h3>CHAOS ENGINE</h3>
+      <div id="chaosBar"><div id="chaosFill"></div></div>
+      <div id="chaosLabel">STABLE</div>
+    </div>
+    <div class="panel"><h3>NEXT</h3><canvas id="nextCanvas" width="120" height="80"></canvas></div>
+    <div class="panel" id="gameOver">
+      <h2>GAME<br>OVER</h2>
+      <button class="btn" id="restartBtn">RESTART</button>
+    </div>
+    <div class="panel" id="startPanel">
+      <button class="btn" id="startBtn">START</button>
+    </div>
+    <div class="panel" id="controls">
+      <span>← →</span> move<br>
+      <span>↑ / Z</span> rotate<br>
+      <span>↓</span> soft drop<br>
+      <span>SPACE</span> hard drop
+    </div>
+  </div>
+</div>
+<script>
+const COLS = 10, ROWS = 20, CELL = 30;
+const W = COLS * CELL, H = ROWS * CELL;
+// A horizontal band needs this fraction of its width covered to clear.
+// Angled cells are wider in projection, so they help fill gaps.
+const CLEAR_FRAC = 0.88;
+
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+const nextCanvas = document.getElementById('nextCanvas');
+const nctx   = nextCanvas.getContext('2d');
+
+const PIECES = [
+  { shape: [[1,1,1,1]],         color: '#0ef' },
+  { shape: [[1,1],[1,1]],       color: '#fe0' },
+  { shape: [[0,1,0],[1,1,1]],   color: '#b0f' },
+  { shape: [[1,0],[1,0],[1,1]], color: '#f80' },
+  { shape: [[0,1],[0,1],[1,1]], color: '#36f' },
+  { shape: [[0,1,1],[1,1,0]],   color: '#0d0' },
+  { shape: [[1,1,0],[0,1,1]],   color: '#f22' },
+];
+
+// ── state ─────────────────────────────────────────────────────────────────
+let cells;       // PhysCell[]   – the only source of truth for piece positions
+let physGrid;    // bool[][]     – rebuilt each frame from resting cells, used by active piece
+let particles;
+let active, nextPiece;
+let score, level, lines, chaos;
+let gameRunning, dropTimer, dropInterval, lastTime;
+let shakeT = 0, shakeX = 0, shakeY = 0;
+let pendingClear = false; // flag: check line clears next physics tick
+
+function initState() {
+  cells = []; particles = [];
+  physGrid = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+  score = 0; level = 1; lines = 0; chaos = 0;
+  dropTimer = 0; dropInterval = 800;
+  shakeT = 0; shakeX = 0; shakeY = 0; pendingClear = false;
+}
+
+// ── chaos parameters ───────────────────────────────────────────────────────
+function cp() {
+  const f = chaos / 10;
+  return {
+    gravity:      0.04 + f * 0.52,          // px/frame²  (0.04 → 0.56)
+    restitution:  0.12 + f * 0.63,          // bounciness (0.12 → 0.75)
+    friction:     0.88 - f * 0.09,          // lateral damping on contact
+    impulse:      f * 1.3,                   // landing impulse scale
+    breakApart:   chaos >= 7,               // cells scatter individually
+    wakeSpeed:    chaos >= 6 ? 2 + f*5 : 1e9, // min speed to disturb resting cell
+    settleFrames: Math.max(6, 28 - chaos*2), // consecutive slow frames to settle
+  };
+}
+
+// ── PhysCell ───────────────────────────────────────────────────────────────
+// phase: 'fly' | 'rest' | 'die'
+// x, y are the pixel CENTRE of the cell.
+// angle is purely visual — collision always uses plain CELL/2 boxes.
+function makeCell(x, y, color) {
+  return { x, y, vx:0, vy:0, angle:0, av:0, color,
+           phase:'fly', sc:0, alpha:1, scale:1 };
+}
+
+// Projected half-width of a rotated square — used ONLY for line-clear coverage.
+function projW(angle) { return CELL/2 * (Math.abs(Math.cos(angle)) + Math.abs(Math.sin(angle))); }
+
+// ── physGrid ───────────────────────────────────────────────────────────────
+function rebuildPhysGrid() {
+  physGrid = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+  for (const c of cells) {
+    if (c.phase !== 'rest') continue;
+    // Map cell centre to the grid square it sits in (axis-aligned, no rotation).
+    const r   = Math.floor(c.y / CELL);
+    const col = Math.floor(c.x / CELL);
+    if (r >= 0 && r < ROWS && col >= 0 && col < COLS) physGrid[r][col] = true;
+  }
+}
+
+// ── pieces ─────────────────────────────────────────────────────────────────
+function newPiece() {
+  const d = PIECES[Math.floor(Math.random() * PIECES.length)];
+  return { shape: d.shape.map(r => [...r]), color: d.color,
+           r: 0, c: Math.floor((COLS - d.shape[0].length) / 2) };
+}
+
+function rotateCW(s) { return s[0].map((_, c) => s.map(r => r[c]).reverse()); }
+
+function validPos(shape, r, c) {
+  for (let row = 0; row < shape.length; row++)
+    for (let col = 0; col < shape[row].length; col++) {
+      if (!shape[row][col]) continue;
+      const nr = r + row, nc = c + col;
+      if (nr >= ROWS || nc < 0 || nc >= COLS) return false;
+      if (nr >= 0 && physGrid[nr][nc]) return false;
+    }
+  return true;
+}
+
+// ── locking ────────────────────────────────────────────────────────────────
+function lockPiece() {
+  const { shape, color, r, c } = active;
+  const p = cp();
+
+  const pcs = [];
+  for (let row = 0; row < shape.length; row++)
+    for (let col = 0; col < shape[row].length; col++)
+      if (shape[row][col]) pcs.push({ gr: r+row, gc: c+col });
+
+  if (pcs.some(b => b.gr < 0)) { endGame(); return; }
+
+  const cxF = pcs.reduce((s,b) => s+b.gc, 0) / pcs.length;
+  const cyF = pcs.reduce((s,b) => s+b.gr, 0) / pcs.length;
+
+  // Pieces spawn at row 0, so the locked row is a direct proxy for how far
+  // they fell. Deeper drops hit harder: more scatter, more shake.
+  const dropRows   = Math.max(...pcs.map(b => b.gr));
+  const dropFactor = 0.3 + Math.min(1, dropRows / (ROWS-1)) * 1.4;
+
+  for (const { gr, gc } of pcs) {
+    const cell = makeCell(gc*CELL + CELL/2, gr*CELL + CELL/2, color);
+
+    if (p.impulse <= 0) {
+      // chaos 0: no physics, sit immediately
+      cell.phase = 'rest';
+    } else if (p.breakApart) {
+      // high chaos: scatter outward from centre
+      const ax = gc - cxF, ay = gr - cyF, d = Math.sqrt(ax*ax+ay*ay)||1;
+      cell.vx = (ax/d*8*p.impulse + (Math.random()-0.5)*10*p.impulse) * dropFactor;
+      cell.vy = -(Math.random()*9+2) * p.impulse * dropFactor;
+      cell.av = (Math.random()-0.5) * 0.35 * p.impulse * dropFactor;
+    } else {
+      // medium chaos: bounce as a group
+      cell.vx = (Math.random()-0.5) * 7 * p.impulse * dropFactor;
+      cell.vy = -(Math.random()*5+1) * p.impulse * dropFactor;
+      cell.av = (Math.random()-0.5) * 0.18 * p.impulse * dropFactor;
+    }
+    cells.push(cell);
+  }
+
+  if (chaos >= 6) addShake((0.35 + (chaos-6)*0.2) * dropFactor);
+
+  active     = nextPiece;
+  nextPiece  = newPiece();
+  pendingClear = true;
+  updateUI(); drawNext();
+}
+
+// ── line clearing (coverage-based, no grid) ────────────────────────────────
+function mergedCoverage(ivs) {
+  if (!ivs.length) return 0;
+  ivs.sort((a,b) => a[0]-b[0]);
+  let total=0, lo=ivs[0][0], hi=ivs[0][1];
+  for (const [a,b] of ivs) {
+    if (a > hi) { total += hi-lo; lo=a; hi=b; }
+    else if (b > hi) hi = b;
+  }
+  return total + hi - lo;
+}
+
+function checkLineClear() {
+  // First pass: find every qualifying band from a single stable snapshot.
+  // (Mutating phases while scanning would make clearBand() on a lower band
+  // wake the cells of a still-unchecked higher band to 'fly', dropping them
+  // out of the 'rest' filter before their own band ever gets evaluated —
+  // silently skipping what should have been a multi-line clear.)
+  const bands = [];
+  for (let row = ROWS-1; row >= 0; row--) {
+    const y1 = row * CELL, y2 = y1 + CELL;
+    const ivs = [];
+    for (const c of cells) {
+      if (c.phase !== 'rest') continue;
+      // Vertical membership: cell centre must be within band (plain CELL/2)
+      if (c.y - CELL/2 >= y2 || c.y + CELL/2 <= y1) continue;
+      const overlap = (Math.min(c.y+CELL/2,y2) - Math.max(c.y-CELL/2,y1)) / CELL;
+      if (overlap < 0.35) continue;
+      // Horizontal projection uses rotation — angled cells cover more width
+      const hw = projW(c.angle);
+      ivs.push([Math.max(0, c.x-hw), Math.min(W, c.x+hw)]);
+    }
+    if (mergedCoverage(ivs) >= W * CLEAR_FRAC) bands.push([y1, y2]);
+  }
+  if (!bands.length) return;
+
+  for (const [y1, y2] of bands) clearBand(y1, y2);
+
+  const cleared = bands.length;
+  score += [0,100,300,500,800][Math.min(cleared,4)] * level;
+  lines += cleared;
+  level  = Math.floor(lines/10)+1;
+  chaos  = Math.min(10, Math.floor(lines/4));
+  dropInterval = Math.max(80, 800-(level-1)*65);
+  if (chaos >= 7) addShake(0.65);
+  updateChaosBar(); updateUI();
+}
+
+function clearBand(y1, y2) {
+  spawnClearParticles(y1, y2);
+  const p = cp();
+
+  // Kill every resting cell whose centre overlaps the band
+  for (const c of cells) {
+    if (c.phase === 'die') continue;
+    if (c.y + CELL/2 <= y1 || c.y - CELL/2 >= y2) continue;
+    c.phase = 'die'; c.alpha = 1; c.scale = 1;
+    c.vx = (Math.random()-0.5)*18; c.vy = -4-Math.random()*9;
+    c.av = (Math.random()-0.5)*2.5;
+  }
+
+  // Wake resting cells above the band so they fall into the gap
+  const f = Math.max(0.15, p.impulse * 0.6);
+  for (const c of cells) {
+    if (c.phase !== 'rest') continue;
+    if (c.y >= y1) continue; // not above band
+    c.phase = 'fly'; c.sc = 0;
+    c.vy = 1.5 + Math.random()*2*f;
+    c.vx = (Math.random()-0.5)*2*f;
+    c.av = (Math.random()-0.5)*0.05*f;
+  }
+}
+
+function spawnClearParticles(y1, y2) {
+  const count = 4 + Math.floor(chaos*1.4);
+  const y = (y1+y2)/2;
+  for (let col = 0; col < COLS; col++) {
+    const x = col*CELL + CELL/2;
+    for (let i = 0; i < count; i++) {
+      particles.push({ x, y,
+        color: `hsl(${Math.random()*360},100%,65%)`,
+        vx: (Math.random()-0.5)*(10+chaos*2),
+        vy: (Math.random()-1.4)*(9+chaos*2),
+        life:1, decay:0.016+Math.random()*0.03, size:2+Math.random()*4 });
+    }
+  }
+}
+
+// A flying cell may only settle to 'rest' if it actually has something
+// holding it up — the floor, or a resting cell roughly one CELL below it.
+// Without this check, collision damping alone could zero out velocity
+// while a cell was still suspended mid-air, freezing it there forever.
+function hasSupportBelow(c) {
+  if (c.y + CELL/2 >= H - 0.5) return true;
+  for (const o of cells) {
+    if (o.phase !== 'rest') continue;
+    const dy = o.y - c.y;
+    if (dy > CELL*0.5 && dy < CELL*1.5 && Math.abs(o.x - c.x) < CELL*0.9) return true;
+  }
+  return false;
+}
+
+// ── physics ────────────────────────────────────────────────────────────────
+function updatePhysics(dt) {
+  const p = cp();
+
+  const flying  = cells.filter(c => c.phase === 'fly');
+  const resting = cells.filter(c => c.phase === 'rest');
+
+  // Integrate flying cells
+  for (const c of flying) {
+    c.vy += p.gravity;
+    c.x  += c.vx;  c.y  += c.vy;
+    c.angle += c.av; c.av *= 0.97;
+
+    // Floor
+    if (c.y + CELL/2 > H) {
+      c.y = H - CELL/2;
+      if (Math.abs(c.vy) > 0.6) {
+        c.vy  = -Math.abs(c.vy) * p.restitution;
+        c.vx *= p.friction;
+        c.av += c.vx * 0.02;
+      } else { c.vy = 0; c.vx *= 0.80; }
+    }
+    // Walls
+    if (c.x - CELL/2 < 0) { c.x = CELL/2;     c.vx =  Math.abs(c.vx)*p.restitution; c.av=-c.av*0.4; }
+    if (c.x + CELL/2 > W) { c.x = W-CELL/2;   c.vx = -Math.abs(c.vx)*p.restitution; c.av=-c.av*0.4; }
+    if (c.y - CELL/2 < 0) { c.y = CELL/2;      if(c.vy<0) c.vy=Math.abs(c.vy)*0.2; }
+
+    // Settle — only if actually supported, otherwise keep falling
+    const spd = Math.sqrt(c.vx*c.vx + c.vy*c.vy);
+    if (spd < 0.32 && Math.abs(c.av) < 0.015) {
+      if (hasSupportBelow(c)) {
+        c.sc++;
+        if (c.sc >= p.settleFrames) {
+          c.vx=0; c.vy=0; c.av=0; c.phase='rest';
+          pendingClear = true;
+        }
+      } else {
+        c.sc = 0;
+        c.vy = Math.max(c.vy, 0.5);
+      }
+    } else { c.sc = 0; }
+  }
+
+  // Cell-cell collisions: flying vs flying
+  for (let i = 0; i < flying.length; i++)
+    for (let j = i+1; j < flying.length; j++)
+      collide(flying[i], flying[j], p.restitution, false);
+
+  // Cell-cell: flying vs resting (resting is static; may wake up)
+  for (const fc of flying) {
+    const spd = Math.sqrt(fc.vx*fc.vx + fc.vy*fc.vy);
+    for (const rc of resting) {
+      if (collide(fc, rc, p.restitution, true) && spd > p.wakeSpeed) {
+        rc.phase='fly'; rc.sc=0;
+        rc.vx = fc.vx*0.30; rc.vy = fc.vy*0.30;
+        rc.av = (Math.random()-0.5)*0.08;
+      }
+    }
+  }
+
+  // Dying cells animate away
+  for (const c of cells) {
+    if (c.phase !== 'die') continue;
+    c.vy += 0.5; c.x += c.vx; c.y += c.vy;
+    c.angle += c.av; c.av *= 0.97; c.vx *= 0.97;
+    c.alpha -= 0.022; c.scale = 0.3 + c.alpha*0.7;
+  }
+  cells = cells.filter(c => c.phase !== 'die' || c.alpha > 0);
+
+  // Deferred line-clear check (after cells settle)
+  if (pendingClear) { pendingClear = false; checkLineClear(); }
+
+  // Particles
+  for (const p of particles) {
+    p.x+=p.vx; p.y+=p.vy; p.vy+=0.22; p.vx*=0.985; p.life-=p.decay;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  // Screen shake decay
+  if (shakeT > 0) {
+    shakeT = Math.max(0, shakeT-0.06);
+    shakeX = (Math.random()-0.5)*shakeT*15;
+    shakeY = (Math.random()-0.5)*shakeT*15;
+  } else { shakeX=0; shakeY=0; }
+}
+
+// Returns true if collision occurred.
+// bStatic=true → only 'a' moves; 'b' is static but can be woken by caller.
+// Collision uses plain CELL/2 half-extents regardless of rotation.
+function collide(a, b, rest, bStatic) {
+  const dx = b.x-a.x, dy = b.y-a.y;
+  const ox = CELL - Math.abs(dx);
+  const oy = CELL - Math.abs(dy);
+  if (ox <= 0 || oy <= 0) return false;
+
+  const r=rest*0.60, fr=0.78;
+  if (ox < oy) {
+    const sx = dx>0?1:-1;
+    if (bStatic) { a.x -= sx*ox; a.vx=-a.vx*r; a.vy*=fr; }
+    else { a.x-=sx*ox/2; b.x+=sx*ox/2; const t=a.vx; a.vx=b.vx*r; b.vx=t*r; a.vy*=fr; b.vy*=fr; }
+  } else {
+    const sy = dy>0?1:-1;
+    if (bStatic) { a.y-=sy*oy; a.vy=(sy>0?-1:1)*Math.abs(a.vy)*r; a.vx*=fr; }
+    else { a.y-=sy*oy/2; b.y+=sy*oy/2; const t=a.vy; a.vy=b.vy*r; b.vy=t*r; a.vx*=fr; b.vx*=fr; }
+  }
+  return true;
+}
+
+function addShake(i) { shakeT = Math.max(shakeT, i); }
+
+// ── rendering ──────────────────────────────────────────────────────────────
+function drawBlock(c, x, y, size, color, alpha, angle, scale) {
+  c.save();
+  if (alpha != null) c.globalAlpha = alpha;
+  c.translate(x + size/2, y + size/2);
+  if (angle) c.rotate(angle);
+  if (scale != null && scale !== 1) c.scale(scale, scale);
+  c.translate(-size/2, -size/2);
+  c.fillStyle = color;
+  c.fillRect(1, 1, size-2, size-2);
+  c.fillStyle = 'rgba(255,255,255,0.22)';
+  c.fillRect(1, 1, size-2, 4); c.fillRect(1, 1, 4, size-2);
+  c.fillStyle = 'rgba(0,0,0,0.32)';
+  c.fillRect(1, size-4, size-2, 3); c.fillRect(size-4, 1, 3, size-2);
+  c.restore();
+}
+
+// Visualise which rows are close to clearing
+function drawCoverageHints() {
+  if (chaos < 3) return;
+  for (let row = 0; row < ROWS; row++) {
+    const y1 = row*CELL, y2 = y1+CELL;
+    const ivs = [];
+    for (const c of cells) {
+      if (c.phase !== 'rest') continue;
+      if (c.y+CELL/2<=y1 || c.y-CELL/2>=y2) continue;
+      const ov=(Math.min(c.y+CELL/2,y2)-Math.max(c.y-CELL/2,y1))/CELL;
+      if (ov<0.35) continue;
+      const hw=projW(c.angle);
+      ivs.push([Math.max(0,c.x-hw), Math.min(W,c.x+hw)]);
+    }
+    const cov = mergedCoverage(ivs) / W;
+    if (cov > 0.4) {
+      const t = Math.min(1, (cov - 0.4) / 0.5); // 0 at 40%, 1 at 90%
+      ctx.fillStyle = `rgba(255,255,100,${t * 0.08})`;
+      ctx.fillRect(0, y1, W, CELL);
+      // Right-edge progress bar
+      ctx.fillStyle = cov >= CLEAR_FRAC
+        ? 'rgba(100,255,100,0.7)' : `rgba(255,220,50,${0.3+t*0.4})`;
+      ctx.fillRect(W-3, y1+1, 3, Math.round(CELL*cov)-2);
+    }
+  }
+}
+
+function render() {
+  ctx.save();
+  ctx.translate(Math.round(shakeX), Math.round(shakeY));
+
+  ctx.fillStyle = '#0d0d14';
+  ctx.fillRect(-10, -10, W+20, H+20);
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.025)'; ctx.lineWidth = 1;
+  for (let r = 0; r <= ROWS; r++) { ctx.beginPath(); ctx.moveTo(0,r*CELL); ctx.lineTo(W,r*CELL); ctx.stroke(); }
+  for (let c = 0; c <= COLS; c++) { ctx.beginPath(); ctx.moveTo(c*CELL,0); ctx.lineTo(c*CELL,H); ctx.stroke(); }
+
+  drawCoverageHints();
+
+  // Ghost piece (fades as chaos rises)
+  if (active && chaos < 9) {
+    const ga = Math.max(0, 0.18 - chaos*0.018);
+    let gr = active.r;
+    while (validPos(active.shape, gr+1, active.c)) gr++;
+    if (gr !== active.r && ga > 0) {
+      ctx.globalAlpha = ga; ctx.strokeStyle = active.color; ctx.lineWidth = 1;
+      for (let row = 0; row < active.shape.length; row++)
+        for (let col = 0; col < active.shape[row].length; col++)
+          if (active.shape[row][col])
+            ctx.strokeRect((active.c+col)*CELL+1, (gr+row)*CELL+1, CELL-2, CELL-2);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Physics cells
+  for (const c of cells)
+    drawBlock(ctx, c.x-CELL/2, c.y-CELL/2, CELL, c.color, c.alpha, c.angle, c.scale);
+
+  // Active piece (always grid-aligned)
+  if (active)
+    for (let row = 0; row < active.shape.length; row++)
+      for (let col = 0; col < active.shape[row].length; col++)
+        if (active.shape[row][col])
+          drawBlock(ctx, (active.c+col)*CELL, (active.r+row)*CELL, CELL, active.color);
+
+  // Particles
+  for (const p of particles) {
+    ctx.save(); ctx.globalAlpha=p.life; ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.size*p.life,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  // Chaos vignette
+  if (chaos >= 7) {
+    ctx.fillStyle = `rgba(180,30,0,${(chaos-7)/3*0.07})`;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  ctx.restore();
+}
+
+function drawNext() {
+  nctx.fillStyle='#111118'; nctx.fillRect(0,0,120,80);
+  if (!nextPiece) return;
+  const s=nextPiece.shape, bs=18;
+  const ox=(120-s[0].length*bs)/2, oy=(80-s.length*bs)/2;
+  for (let r=0;r<s.length;r++)
+    for (let c=0;c<s[r].length;c++)
+      if(s[r][c]) drawBlock(nctx,ox+c*bs,oy+r*bs,bs,nextPiece.color);
+}
+
+// ── UI ─────────────────────────────────────────────────────────────────────
+const CHAOS_LABELS = ['STABLE','STABLE','STABLE','WOBBLY','BOUNCY','BOUNCY','LIVELY','CHAOTIC','BREAKING','BREAKING','MAYHEM'];
+function updateChaosBar() {
+  document.getElementById('chaosFill').style.width = (chaos*10)+'%';
+  document.getElementById('chaosLabel').textContent = CHAOS_LABELS[chaos]||'MAYHEM';
+}
+function updateUI() {
+  document.getElementById('scoreVal').textContent = score;
+  document.getElementById('levelVal').textContent = level;
+  document.getElementById('linesVal').textContent = lines;
+}
+function endGame() { gameRunning=false; document.getElementById('gameOver').style.display='block'; }
+
+// ── input ──────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (!gameRunning || !active) return;
+  const k = e.key;
+  if      (k==='ArrowLeft'  ||k==='a') { if(validPos(active.shape,active.r,active.c-1)) active.c--; }
+  else if (k==='ArrowRight' ||k==='d') { if(validPos(active.shape,active.r,active.c+1)) active.c++; }
+  else if (k==='ArrowDown'  ||k==='s') { if(validPos(active.shape,active.r+1,active.c)){active.r++;score++;} }
+  else if (k==='ArrowUp'||k==='w'||k==='z'||k==='Z') {
+    const rot=rotateCW(active.shape);
+    for (const dc of [0,-1,1,-2,2])
+      if (validPos(rot,active.r,active.c+dc)){active.shape=rot;active.c+=dc;break;}
+  } else if (k===' ') {
+    while (validPos(active.shape,active.r+1,active.c)){active.r++;score+=2;}
+    lockPiece(); dropTimer=0; updateUI(); return;
+  } else return;
+  updateUI(); e.preventDefault();
+});
+
+// ── game loop ───────────────────────────────────────────────────────────────
+function gameLoop(ts) {
+  if (!gameRunning) return;
+  const dt = Math.min(ts-lastTime, 50);
+  lastTime = ts;
+
+  rebuildPhysGrid();
+
+  // Game-over check: if active piece's spawn is blocked
+  if (!validPos(active.shape, active.r, active.c)) { endGame(); return; }
+
+  dropTimer += dt;
+  if (dropTimer >= dropInterval) {
+    dropTimer = 0;
+    if (validPos(active.shape, active.r+1, active.c)) active.r++;
+    else lockPiece();
+  }
+
+  updatePhysics(dt);
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+function startGame() {
+  initState();
+  active=newPiece(); nextPiece=newPiece();
+  gameRunning=true;
+  updateUI(); updateChaosBar(); drawNext();
+  document.getElementById('gameOver').style.display='none';
+  document.getElementById('startPanel').style.display='none';
+  lastTime=performance.now();
+  requestAnimationFrame(gameLoop);
+}
+
+document.getElementById('startBtn').onclick   = startGame;
+document.getElementById('restartBtn').onclick = startGame;
+
+nctx.fillStyle='#111118'; nctx.fillRect(0,0,120,80);
+</script>
+</body>
+</html>
