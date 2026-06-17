@@ -165,6 +165,11 @@ function lockPiece() {
   const cxF = pcs.reduce((s,b) => s+b.gc, 0) / pcs.length;
   const cyF = pcs.reduce((s,b) => s+b.gr, 0) / pcs.length;
 
+  // Pieces spawn at row 0, so the locked row is a direct proxy for how far
+  // they fell. Deeper drops hit harder: more scatter, more shake.
+  const dropRows   = Math.max(...pcs.map(b => b.gr));
+  const dropFactor = 0.3 + Math.min(1, dropRows / (ROWS-1)) * 1.4;
+
   for (const { gr, gc } of pcs) {
     const cell = makeCell(gc*CELL + CELL/2, gr*CELL + CELL/2, color);
 
@@ -174,19 +179,19 @@ function lockPiece() {
     } else if (p.breakApart) {
       // high chaos: scatter outward from centre
       const ax = gc - cxF, ay = gr - cyF, d = Math.sqrt(ax*ax+ay*ay)||1;
-      cell.vx = ax/d*8*p.impulse + (Math.random()-0.5)*10*p.impulse;
-      cell.vy = -(Math.random()*9+2) * p.impulse;
-      cell.av = (Math.random()-0.5) * 0.35 * p.impulse;
+      cell.vx = (ax/d*8*p.impulse + (Math.random()-0.5)*10*p.impulse) * dropFactor;
+      cell.vy = -(Math.random()*9+2) * p.impulse * dropFactor;
+      cell.av = (Math.random()-0.5) * 0.35 * p.impulse * dropFactor;
     } else {
       // medium chaos: bounce as a group
-      cell.vx = (Math.random()-0.5) * 7 * p.impulse;
-      cell.vy = -(Math.random()*5+1) * p.impulse;
-      cell.av = (Math.random()-0.5) * 0.18 * p.impulse;
+      cell.vx = (Math.random()-0.5) * 7 * p.impulse * dropFactor;
+      cell.vy = -(Math.random()*5+1) * p.impulse * dropFactor;
+      cell.av = (Math.random()-0.5) * 0.18 * p.impulse * dropFactor;
     }
     cells.push(cell);
   }
 
-  if (chaos >= 6) addShake(0.35 + (chaos-6)*0.2);
+  if (chaos >= 6) addShake((0.35 + (chaos-6)*0.2) * dropFactor);
 
   active     = nextPiece;
   nextPiece  = newPiece();
@@ -278,6 +283,20 @@ function spawnClearParticles(y1, y2) {
   }
 }
 
+// A flying cell may only settle to 'rest' if it actually has something
+// holding it up — the floor, or a resting cell roughly one CELL below it.
+// Without this check, collision damping alone could zero out velocity
+// while a cell was still suspended mid-air, freezing it there forever.
+function hasSupportBelow(c) {
+  if (c.y + CELL/2 >= H - 0.5) return true;
+  for (const o of cells) {
+    if (o.phase !== 'rest') continue;
+    const dy = o.y - c.y;
+    if (dy > CELL*0.5 && dy < CELL*1.5 && Math.abs(o.x - c.x) < CELL*0.9) return true;
+  }
+  return false;
+}
+
 // ── physics ────────────────────────────────────────────────────────────────
 function updatePhysics(dt) {
   const p = cp();
@@ -305,13 +324,18 @@ function updatePhysics(dt) {
     if (c.x + CELL/2 > W) { c.x = W-CELL/2;   c.vx = -Math.abs(c.vx)*p.restitution; c.av=-c.av*0.4; }
     if (c.y - CELL/2 < 0) { c.y = CELL/2;      if(c.vy<0) c.vy=Math.abs(c.vy)*0.2; }
 
-    // Settle
+    // Settle — only if actually supported, otherwise keep falling
     const spd = Math.sqrt(c.vx*c.vx + c.vy*c.vy);
     if (spd < 0.32 && Math.abs(c.av) < 0.015) {
-      c.sc++;
-      if (c.sc >= p.settleFrames) {
-        c.vx=0; c.vy=0; c.av=0; c.phase='rest';
-        pendingClear = true;
+      if (hasSupportBelow(c)) {
+        c.sc++;
+        if (c.sc >= p.settleFrames) {
+          c.vx=0; c.vy=0; c.av=0; c.phase='rest';
+          pendingClear = true;
+        }
+      } else {
+        c.sc = 0;
+        c.vy = Math.max(c.vy, 0.5);
       }
     } else { c.sc = 0; }
   }
