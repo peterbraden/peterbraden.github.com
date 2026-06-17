@@ -212,8 +212,12 @@ function mergedCoverage(ivs) {
 }
 
 function checkLineClear() {
-  let cleared = 0;
-  // Scan bands from bottom up
+  // First pass: find every qualifying band from a single stable snapshot.
+  // (Mutating phases while scanning would make clearBand() on a lower band
+  // wake the cells of a still-unchecked higher band to 'fly', dropping them
+  // out of the 'rest' filter before their own band ever gets evaluated —
+  // silently skipping what should have been a multi-line clear.)
+  const bands = [];
   for (let row = ROWS-1; row >= 0; row--) {
     const y1 = row * CELL, y2 = y1 + CELL;
     const ivs = [];
@@ -227,20 +231,20 @@ function checkLineClear() {
       const hw = projW(c.angle);
       ivs.push([Math.max(0, c.x-hw), Math.min(W, c.x+hw)]);
     }
-    if (mergedCoverage(ivs) >= W * CLEAR_FRAC) {
-      clearBand(y1, y2);
-      cleared++;
-    }
+    if (mergedCoverage(ivs) >= W * CLEAR_FRAC) bands.push([y1, y2]);
   }
-  if (cleared > 0) {
-    score += [0,100,300,500,800][Math.min(cleared,4)] * level;
-    lines += cleared;
-    level  = Math.floor(lines/10)+1;
-    chaos  = Math.min(10, Math.floor(lines/4));
-    dropInterval = Math.max(80, 800-(level-1)*65);
-    if (chaos >= 7) addShake(0.65);
-    updateChaosBar(); updateUI();
-  }
+  if (!bands.length) return;
+
+  for (const [y1, y2] of bands) clearBand(y1, y2);
+
+  const cleared = bands.length;
+  score += [0,100,300,500,800][Math.min(cleared,4)] * level;
+  lines += cleared;
+  level  = Math.floor(lines/10)+1;
+  chaos  = Math.min(10, Math.floor(lines/4));
+  dropInterval = Math.max(80, 800-(level-1)*65);
+  if (chaos >= 7) addShake(0.65);
+  updateChaosBar(); updateUI();
 }
 
 function clearBand(y1, y2) {
